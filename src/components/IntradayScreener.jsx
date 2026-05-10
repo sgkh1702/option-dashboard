@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { fetchRange } from "../utils/gsheets";
+import { SCREENER_SHEET, SCREENER_COLS } from "../config/sheets";
 
-//const PROXY      = "http://localhost:5000";
-const PROXY = import.meta.env.VITE_PROXY_URL ?? "http://localhost:5000";
+const PROXY      = import.meta.env.VITE_PROXY_URL ?? "http://localhost:5000";
 const REFRESH_MS = 5 * 60 * 1000;
 const TOP_N      = 10;
 
@@ -569,18 +570,63 @@ export default function IntradayScreener() {
     }
   }, []); // saveSnapshot is stable → runScreener is stable
 
-  // ── Mount once: load cache, kick off live fetch, start interval ───────────────
-  // FIX: all three deps (runScreener, loadCached, saveSnapshot) are now stable
-  // useCallbacks with empty dep arrays, so this effect runs exactly once on mount
-  // and the interval is never torn down mid-session.
+  // ── Load from GSheet instantly on mount ─────────────────────────────────────
+  const loadFromSheet = useCallback(async () => {
+    try {
+      setStatus("loading");
+      // Fetch only last 40 rows (20 bull + 20 bear per cycle) — fast!
+      const allRows = await fetchRange(SCREENER_SHEET, "A:S");
+      if (!allRows?.length) { runScreener(); return; }
+
+      // Last 40 rows = latest snapshot
+      const latest = allRows.slice(-40).filter(r => r[3]); // must have symbol
+      if (!latest.length) { runScreener(); return; }
+
+      const lastDate = latest[latest.length - 1]?.[0];
+      const lastTime = latest[latest.length - 1]?.[1];
+
+      const scored = latest.map(r => {
+        const get  = (i) => { const v = parseFloat(r[i]); return isNaN(v) ? 0 : v; };
+        const q = {
+          ltp:          get(4),   pct_change:   get(5),
+          day_open:     get(6),   prev_close:   get(7),
+          high:         get(8),   low:          get(9),
+          vwap:         get(10),  volume:       get(11),
+          avg_volume:   get(12),  vol_ratio:    get(13),
+          atr:          get(17) || null,
+          atr_consumed: get(18) || null,
+        };
+        const s = {
+          rs:       get(14), momentum: get(15), reversal: get(16),
+          volRatio: get(13),
+          isBull: r[2] === "BULL", isBear: r[2] === "BEAR",
+          bias:   r[2] ?? "—",
+        };
+        return { symbol: r[3], q, s };
+      });
+
+      setScored(scored);
+      setLastFetch(new Date(`${lastDate} ${lastTime}`));
+      setStatus("ok");
+      setCountdown(REFRESH_MS / 1000);
+    } catch (e) {
+      log.info?.("GSheet load failed, falling back to Render");
+      runScreener();
+    }
+  }, [runScreener]);
+
+  // ── Mount once: load from GSheet instantly, then start Render refresh cycle ──
   useEffect(() => {
     if (mountedRef.current) return;
     mountedRef.current = true;
 
-    loadCached().then(() => runScreener());
+    // Step 1: Show GSheet data instantly (< 1 sec)
+    loadFromSheet();
+
+    // Step 2: Refresh from Render every 5 mins
     timerRef.current = setInterval(runScreener, REFRESH_MS);
     return () => clearInterval(timerRef.current);
-  }, [runScreener, loadCached]);
+  }, [loadFromSheet, runScreener]);
 
   // ── Countdown ticker (independent of fetch cycle) ────────────────────────────
   useEffect(() => {

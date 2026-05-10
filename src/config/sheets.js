@@ -20,3 +20,15 @@ export const PCR_COLS = { time:0, ce_oi_chg:1, pe_oi_chg:2, ce_oi:3, pe_oi:4, di
 
 // ATM helper: Time, CE OI Change, PE OI Change, CE OI, PE OI, CE IV, PE IV, PCR, Spot
 export const ATM_COLS = { time:0, ce_oi_chg:1, pe_oi_chg:2, ce_oi:3, pe_oi:4, ce_iv:5, pe_iv:6, pcr:7, spot:8 };
+
+// ScreenerData sheet columns (0-indexed):
+// Date(0), Time(1), Bias(2), Symbol(3), LTP(4), Chg%(5), Day Open(6), Prev Close(7),
+// High(8), Low(9), VWAP(10), Volume(11), Avg Vol(12), Vol Ratio(13),
+// RS vs Nifty(14), Mom Score(15), Rev Score(16), ATR(17), ATR Used%(18)
+export const SCREENER_SHEET = "ScreenerData";
+export const SCREENER_COLS  = {
+  date:0, time:1, bias:2, symbol:3, ltp:4, pct_change:5,
+  day_open:6, prev_close:7, high:8, low:9, vwap:10,
+  volume:11, avg_volume:12, vol_ratio:13,
+  rs:14, momentum:15, reversal:16, atr:17, atr_consumed:18,
+};
