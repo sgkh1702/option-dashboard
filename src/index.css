@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Base font size bump ─────────────────────────────────────────────────────
+   Tailwind default = 16px. We push to 17px so all rem-based sizes scale up
+   proportionally without touching individual component classes.
+   xs  → ~12.75px  (was 12px)
+   sm  → ~14.45px  (was 14px)
+   base→  17px     (was 16px)
+   lg  → ~19.1px   (was 18px)
+*/
+html {
+  font-size: 17px;
+}
+
+/* Slightly tighter line-height for dense trading tables */
+body {
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Make tabular numbers consistent across all tables */
+table {
+  font-variant-numeric: tabular-nums;
+}
