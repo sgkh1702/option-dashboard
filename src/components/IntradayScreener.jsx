@@ -620,13 +620,17 @@ export default function IntradayScreener() {
     if (mountedRef.current) return;
     mountedRef.current = true;
 
-    // Step 1: Show GSheet data instantly (< 1 sec)
-    loadFromSheet();
+    // Step 1: Show GSheet data instantly (< 1 sec), then immediately fetch
+    // live data from Render — don't wait 5 min for first interval tick
+    loadFromSheet().then(() => runScreener());
 
-    // Step 2: Refresh from Render every 5 mins
+    // Step 2: ORB runs independently — doesn't wait for screener
+    fetchOrb();
+
+    // Step 3: Refresh from Render every 5 mins
     timerRef.current = setInterval(runScreener, REFRESH_MS);
     return () => clearInterval(timerRef.current);
-  }, [loadFromSheet, runScreener]);
+  }, [loadFromSheet, runScreener, fetchOrb]);
 
   // ── Countdown ticker (independent of fetch cycle) ────────────────────────────
   useEffect(() => {
