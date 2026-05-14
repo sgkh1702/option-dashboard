@@ -410,7 +410,7 @@ function OrbPanel({ orbData, orbStatus, onRefresh }) {
         <span className="flex items-center gap-1"><span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 border border-blue-300">Watching</span> Setup valid, waiting</span>
         <span className="flex items-center gap-1"><span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-300">Missed</span> Triggered but ATR &gt; 80%</span>
         <span className="flex items-center gap-1"><span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-600 border border-red-300">Failed</span> Broke the other side</span>
-        <span className="ml-auto text-gray-400">C2/C3/C4 = which 15min candle triggered</span>
+        <span className="ml-auto text-gray-400">C2/C3/C4 = which 5-min candle (from 9:30) triggered</span>
       </div>
 
       {orbStatus === "loading" && (
@@ -523,15 +523,17 @@ export default function IntradayScreener() {
       setCountdown(REFRESH_MS / 1000);
 
       // Snapshot: save ALL scored rows for backtesting
+      // Bug 1b fix: include prev_close, atr, atr_consumed to fill all 19 sheet columns
       const snapRows = rows.map(({ symbol, q, s }) => ({
         symbol,
-        ltp:        q.ltp,        pct_change: q.pct_change,
-        day_open:   q.day_open,   high:       q.high,
-        low:        q.low,        vwap:       q.vwap,
-        volume:     q.volume,     avg_volume: q.avg_volume,
-        vol_ratio:  s.volRatio,   rs:         s.rs,
-        momentum:   s.momentum,   reversal:   s.reversal,
-        bias:       s.bias,
+        ltp:          q.ltp,          pct_change:   q.pct_change,
+        day_open:     q.day_open,     prev_close:   q.prev_close,
+        high:         q.high,         low:          q.low,
+        vwap:         q.vwap,         volume:       q.volume,
+        avg_volume:   q.avg_volume,   vol_ratio:    s.volRatio,
+        rs:           s.rs,           momentum:     s.momentum,
+        reversal:     s.reversal,     bias:         s.bias,
+        atr:          q.atr ?? "",    atr_consumed: q.atr_consumed ?? "",
       }));
       saveSnapshot(snapRows);
 
@@ -578,8 +580,12 @@ export default function IntradayScreener() {
       const allRows = await fetchRange(SCREENER_SHEET, "A:S");
       if (!allRows?.length) { runScreener(); return; }
 
-      // Last 40 rows = latest snapshot
-      const latest = allRows.slice(-40).filter(r => r[3]); // must have symbol
+      // Last 40 data rows = latest snapshot; r[3] = Symbol (col D)
+      // Bug 2 fix: BG _write_to_sheet column order is:
+      // [0]Date [1]Time [2]Bias [3]Symbol [4]LTP [5]Chg% [6]DayOpen [7]PrevClose
+      // [8]High [9]Low [10]VWAP [11]Volume [12]AvgVol [13]VolRatio
+      // [14]RS [15]MomScore [16]RevScore [17]ATR [18]ATRUsed%
+      const latest = allRows.slice(-40).filter(r => r[3]); // r[3] = Symbol
       if (!latest.length) { runScreener(); return; }
 
       const lastDate = latest[latest.length - 1]?.[0];
