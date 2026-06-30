@@ -1,0 +1,8 @@
+{
+  "name": "option-dashboard",
+  "compatibility_date": "2026-06-30",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  }
+}
