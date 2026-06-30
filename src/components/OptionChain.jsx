@@ -1,9 +1,9 @@
-import { useEffect, useRef, useMemo } from "react";
+import { useRef, useMemo, useEffect } from "react";
 import { Chart, registerables } from "chart.js";
 Chart.register(...registerables);
 
-const CE_COLOR = "#378ADD";
-const PE_COLOR = "#D4537E";
+const CE_COLOR  = "#378ADD";
+const PE_COLOR  = "#D4537E";
 
 const SIG = {
   SB: "bg-rose-200 text-rose-800",
@@ -12,12 +12,7 @@ const SIG = {
   LU: "bg-purple-200 text-purple-800",
 };
 
-const SIG_DOT = {
-  SB: "#fca5a5",
-  LB: "#86efac",
-  SC: "#fcd34d",
-  LU: "#d8b4fe",
-};
+const SIG_DOT = { SB: "#fca5a5", LB: "#86efac", SC: "#fcd34d", LU: "#d8b4fe" };
 
 function mkDs(label, data, color) {
   return { label, data, borderColor: color, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, tension: 0.3, fill: false };
@@ -27,9 +22,8 @@ function mkDs(label, data, color) {
 function OverallChart({ pcrHistory }) {
   const canvasRef = useRef(null);
   const inst      = useRef(null);
-
-  const labels   = useMemo(() => pcrHistory?.map(r => r.time) ?? [], [pcrHistory]);
-  const datasets = useMemo(() => [
+  const labels    = useMemo(() => pcrHistory?.map(r => r.time) ?? [], [pcrHistory]);
+  const datasets  = useMemo(() => [
     mkDs("CE ΔOI", pcrHistory?.map(r => (r.ce_oi_chg ?? 0) / 1000) ?? [], CE_COLOR),
     mkDs("PE ΔOI", pcrHistory?.map(r => (r.pe_oi_chg ?? 0) / 1000) ?? [], PE_COLOR),
   ], [pcrHistory]);
@@ -62,7 +56,7 @@ function OverallChart({ pcrHistory }) {
         },
         scales: {
           x: { ticks: { font: { size: 8 }, autoSkip: true, maxTicksLimit: 7, maxRotation: 45, minRotation: 45 }, grid: { color: "rgba(0,0,0,0.04)" } },
-          y: { ticks: { font: { size: 8 }, callback: v => v + "K" }, title: { display: false }, grid: { color: "rgba(0,0,0,0.04)" } },
+          y: { ticks: { font: { size: 8 }, callback: v => v + "K" }, grid: { color: "rgba(0,0,0,0.04)" } },
         },
       },
     });
@@ -71,7 +65,6 @@ function OverallChart({ pcrHistory }) {
 
   return (
     <div className="border-b border-gray-200 shrink-0">
-      {/* Title */}
       <div className="flex items-center gap-2 px-2 py-1 border-b border-gray-100" style={{ backgroundColor: "#f8fafc" }}>
         <span className="text-[10px] font-semibold text-gray-700">Overall CE/PE ΔOI</span>
         <span className="flex items-center gap-1 text-[9px] text-gray-500 ml-auto">
@@ -87,7 +80,7 @@ function OverallChart({ pcrHistory }) {
   );
 }
 
-// ── PCR history table with Diff + Signal ────────────────────────────────────
+// ── PCR history table ────────────────────────────────────────────────────────
 function PcrTable({ rows }) {
   const rev  = useMemo(() => [...(rows ?? [])].reverse(), [rows]);
   const fmtK = v => v == null || v === "" ? "-" : (Number(v) / 1000).toFixed(1) + "K";
@@ -146,6 +139,10 @@ function ChainTable({ chain, atmStrike, selectedStrike, onSelectStrike }) {
   const fmt  = v => v == null || v === "" ? "-" : Number(v).toLocaleString("en-IN", { maximumFractionDigits: 2 });
   const fmtK = v => v == null || v === "" ? "-" : (Number(v) / 1000).toFixed(1) + "K";
 
+  if (!chain?.length) return (
+    <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">No chain data.</div>
+  );
+
   const maxCeStrike = chain.reduce((b, r) => (r.ce_oi ?? 0) > (b.ce_oi ?? 0) ? r : b, chain[0]).strike;
   const maxPeStrike = chain.reduce((b, r) => (r.pe_oi ?? 0) > (b.pe_oi ?? 0) ? r : b, chain[0]).strike;
 
@@ -160,8 +157,7 @@ function ChainTable({ chain, atmStrike, selectedStrike, onSelectStrike }) {
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
-      {/* Legend */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-2 py-1 border-b border-gray-200 text-[9px] text-gray-500 shrink-0 sticky top-0 z-10"
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-2 py-1 border-b border-gray-200 text-[9px] text-gray-500 shrink-0"
            style={{ backgroundColor: "#f8fafc" }}>
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm border border-green-400 inline-block" style={{ backgroundColor: "#dcfce7" }}/>ITM CE</span>
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm border border-yellow-500 inline-block" style={{ backgroundColor: "#fef9c3" }}/>ATM</span>
@@ -169,7 +165,6 @@ function ChainTable({ chain, atmStrike, selectedStrike, onSelectStrike }) {
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm inline-block" style={{ backgroundColor: "#93c5fd" }}/>Max CE</span>
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm inline-block" style={{ backgroundColor: "#fdba74" }}/>Max PE</span>
       </div>
-
       <div className="overflow-auto flex-1">
         <table className="w-full tabular-nums" style={{ fontSize: "10px" }}>
           <thead className="sticky top-0 z-10">
@@ -193,11 +188,10 @@ function ChainTable({ chain, atmStrike, selectedStrike, onSelectStrike }) {
               const isATM   = row.strike === atmStrike;
               const isMaxCe = row.strike === maxCeStrike;
               const isMaxPe = row.strike === maxPeStrike;
-              const atmRowStyle = isATM ? { borderTop: "2px solid #ca8a04", borderBottom: "2px solid #ca8a04" } : {};
               return (
                 <tr key={row.strike} onClick={() => onSelectStrike(row.strike)}
                   className="cursor-pointer border-t border-gray-100 hover:brightness-95 transition-all"
-                  style={atmRowStyle}>
+                  style={isATM ? { borderTop: "2px solid #ca8a04", borderBottom: "2px solid #ca8a04" } : {}}>
                   <td className="text-center px-1 py-1" style={{ backgroundColor: ceBg(row.strike) }}>
                     <span className={`px-1 py-0.5 rounded text-[8px] font-bold ${SIG[row.signal] ?? "text-gray-400"}`}>{row.signal || "—"}</span>
                   </td>
@@ -241,32 +235,43 @@ function ChainTable({ chain, atmStrike, selectedStrike, onSelectStrike }) {
   );
 }
 
-// ── Main export ──────────────────────────────────────────────────────────────
-export default function OptionChain({ chain, atmStrike, selectedStrike, onSelectStrike, pcrHistory }) {
+export default function OptionChain({
+  chain, atmStrike,
+  selectedStrike, onSelectStrike,
+  pcrHistory,
+  selectedExpiry,
+  lastUpdated,
+}) {
   if (!chain?.length) return (
-    <div className="text-gray-400 text-sm p-6 text-center">No data yet — run the Python script first.</div>
+    <div className="text-gray-400 text-sm p-6 text-center">
+      No data yet — run the Python collector script first.
+    </div>
   );
 
   return (
-    <div className="flex gap-0 border border-gray-200 rounded-lg overflow-hidden"
-         style={{ height: "calc(100vh - 195px)", minHeight: 480 }}>
-
-      {/* LEFT — Option chain ~60% width */}
-      <div className="flex flex-col overflow-hidden border-r border-gray-200" style={{ flex: "0 0 60%" }}>
-        <ChainTable
-          chain={chain}
-          atmStrike={atmStrike}
-          selectedStrike={selectedStrike}
-          onSelectStrike={onSelectStrike}
-        />
+    <div className="flex flex-col gap-0">
+      {/* Status bar — sheets data only */}
+      <div className="flex items-center gap-3 px-3 py-1 bg-blue-50 border border-blue-100 rounded-lg mb-2 text-xs text-blue-600">
+        <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block"/>
+        Sheets data · {selectedExpiry ?? ""}
+        {lastUpdated && (
+          <span className="text-blue-400 ml-1">
+            · updated {lastUpdated.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+          </span>
+        )}
       </div>
 
-      {/* RIGHT — chart on top + PCR table below ~40% width */}
-      <div className="flex flex-col overflow-hidden" style={{ flex: "0 0 40%" }}>
-        <OverallChart pcrHistory={pcrHistory} />
-        <PcrTable rows={pcrHistory} />
+      <div className="flex gap-0 border border-gray-200 rounded-lg overflow-hidden"
+           style={{ height: "calc(100vh - 220px)", minHeight: 480 }}>
+        <div className="flex flex-col overflow-hidden border-r border-gray-200" style={{ flex: "0 0 60%" }}>
+          <ChainTable chain={chain} atmStrike={atmStrike}
+            selectedStrike={selectedStrike} onSelectStrike={onSelectStrike} />
+        </div>
+        <div className="flex flex-col overflow-hidden" style={{ flex: "0 0 40%" }}>
+          <OverallChart pcrHistory={pcrHistory} />
+          <PcrTable rows={pcrHistory} />
+        </div>
       </div>
-
     </div>
   );
 }

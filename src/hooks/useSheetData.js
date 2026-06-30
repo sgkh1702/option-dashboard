@@ -2,7 +2,11 @@ import { useState, useCallback } from "react";
 import { fetchRange, parseRow } from "../utils/gsheets";
 import { SHEETS, RAW_COLS, PCR_COLS, ATM_COLS } from "../config/sheets";
 
-const WINDOW = 5; // ATM ± 5 strikes shown in chain
+const WINDOW = 5; // ATM +/- 5 strikes shown in chain
+
+// Col index of Expiry in NF raw sheet (col P = index 15)
+// BNF has no Expiry column — stays at A:O (15 cols)
+const NF_EXPIRY_COL = 15;
 
 export function useSheetData() {
   const [data,        setData]        = useState(null);
@@ -12,7 +16,9 @@ export function useSheetData() {
   const [error,       setError]       = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
 
-  const fetchData = useCallback(async (indexKey, step) => {
+  // selectedExpiry: "YYYY-MM-DD" — only used for NIFTY to filter NFData rows.
+  // For BNF and all others pass null — no filtering applied.
+  const fetchData = useCallback(async (indexKey, step, selectedExpiry = null) => {
     const sheetCfg = SHEETS[indexKey];
     if (!sheetCfg) { setError(`No sheet config for ${indexKey}`); return; }
 
@@ -20,29 +26,36 @@ export function useSheetData() {
     setError(null);
 
     try {
-      // ── 1. Fetch raw sheet as arrays ──────────────────────────────────────
-      // allRaw kept as raw string arrays — OIChart uses r[7] index access
-      const allRaw = await fetchRange(sheetCfg.raw, "A:O")
+      const isNifty = indexKey === "NIFTY";
+
+      // ── 1. Fetch raw sheet ────────────────────────────────────────────────
+      // NF: A:P (16 cols — col P = Expiry)
+      // BNF + others: A:O (15 cols)
+      const range  = isNifty ? "A:P" : "A:O";
+      let   allRaw = await fetchRange(sheetCfg.raw, range)
         .then(rows => rows.filter(r => r[7] && r[0]));
 
-      // ── 2. Parse ALL rows once — StraddleStrangle needs r.ce_ltp etc ──────
-      // THIS was the bug: Dashboard passed rawRows (arrays) to StraddleStrangle
-      // which expected parsed objects → ce_ltp was always undefined → combined=0
+      // ── 2. For Nifty: filter by selectedExpiry ────────────────────────────
+      if (isNifty && selectedExpiry) {
+        const hasExpiryCol = allRaw.some(r => r[NF_EXPIRY_COL] && r[NF_EXPIRY_COL].trim() !== "");
+        // Only skip filtering if NO rows have expiry col at all (old sheet format)
+        // If sheet has expiry col, always filter — even if 0 rows match (avoids mixing expiries)
+        allRaw = hasExpiryCol
+          ? allRaw.filter(r => r[NF_EXPIRY_COL] === selectedExpiry)
+          : allRaw;
+      }
+
+      // ── 3. Parse all rows ─────────────────────────────────────────────────
       const allParsed = allRaw.map(r => parseRow(r, RAW_COLS));
 
-      // ── 3. Latest parsed row per strike → chain ───────────────────────────
-      const byStrike = {};
-      allParsed.forEach(r => {
-        if (r.strike) byStrike[r.strike] = r;
-      });
+      // ── 4. Latest row per strike -> chain ─────────────────────────────────
+      const byStrike  = {};
+      allParsed.forEach(r => { if (r.strike) byStrike[r.strike] = r; });
       const allStrikes = Object.values(byStrike).sort((a, b) => a.strike - b.strike);
 
-      // ── 4. PCR history + spot + ATM ──────────────────────────────────────
+      // ── 5. PCR history + spot + ATM ───────────────────────────────────────
       const pcrRows = await fetchRange(sheetCfg.pcr, "A:H")
-        .then(rows => rows
-          .filter(r => r[0])
-          .map(r => parseRow(r, PCR_COLS))
-        );
+        .then(rows => rows.filter(r => r[0]).map(r => parseRow(r, PCR_COLS)));
 
       const spot    = pcrRows[pcrRows.length - 1]?.spot ?? 0;
       const rounded = Math.round(spot / step) * step;
@@ -52,24 +65,15 @@ export function useSheetData() {
             allStrikes[0]
           )?.strike;
 
-      // ── 5. Slice chain to ATM±5 ──────────────────────────────────────────
+      // ── 6. Chain: ATM +/- WINDOW strikes ─────────────────────────────────
       const chain = atm
         ? allStrikes.filter(r => Math.abs(r.strike - atm) <= WINDOW * step)
         : allStrikes;
 
-      // ── 6. ATM history — dedicated helper sheets first, raw fallback ──────
-      // gsheet_bnf.py writes BNF_ATM / BNF_ATMm1 / BNF_ATMp1 every 5 min.
-      // ATM_COLS from sheets.js: {time,ce_oi_chg,pe_oi_chg,ce_oi,pe_oi,ce_iv,pe_iv,pcr,spot}
-      const fetchAtmSheet = async (sheetName) => {
-        try {
-          const rows = await fetchRange(sheetName, "A:I")
-            .then(r => r.filter(row => row[0]));
-          if (rows.length) return rows.map(r => parseRow(r, ATM_COLS));
-        } catch (_) {}
-        return null; // signal fallback needed
-      };
-
-      // Fallback: derive from allRaw filtered by strike (same shape as ATM_COLS)
+      // ── 7. ATM history — always derived from rawRows ──────────────────────
+      // ATM sheets (BNF_ATM etc.) removed — no longer written or read.
+      // deriveFromRaw filters allRaw by strike and includes CE/PE LTP.
+      // This correctly tracks current ATM even if ATM shifted during the day.
       const deriveFromRaw = (strike) =>
         allRaw
           .filter(r => parseFloat(r[7]) === strike)
@@ -82,24 +86,21 @@ export function useSheetData() {
             ce_iv:     parseFloat(r[4])  || 0,
             pe_iv:     parseFloat(r[10]) || 0,
             pcr:       parseFloat(r[14]) || 0,
+            ce_ltp:    parseFloat(r[6])  || 0,   // col G — CE LTP
+            pe_ltp:    parseFloat(r[8])  || 0,   // col I — PE LTP (LTP2)
             spot:      0,
           }));
 
       if (atm) {
-        const [atmM1, atmC, atmP1] = await Promise.all([
-          fetchAtmSheet(sheetCfg.atm_m1),
-          fetchAtmSheet(sheetCfg.atm),
-          fetchAtmSheet(sheetCfg.atm_p1),
-        ]);
         setAtmHistory({
-          m1:  atmM1 ?? deriveFromRaw(atm - step),
-          atm: atmC  ?? deriveFromRaw(atm),
-          p1:  atmP1 ?? deriveFromRaw(atm + step),
+          m1:  deriveFromRaw(atm - step),
+          atm: deriveFromRaw(atm),
+          p1:  deriveFromRaw(atm + step),
         });
       }
 
-      // rawRows    = raw string arrays → OIChart (uses r[7] index access)
-      // parsedRows = parsed objects   → StraddleStrangle (uses r.ce_ltp named access)
+      // rawRows    = raw string arrays  -> OIChart (uses r[7] index access)
+      // parsedRows = parsed objects     -> StraddleStrangle (uses r.ce_ltp named access)
       setData({ chain, spot, atm, rawRows: allRaw, parsedRows: allParsed });
       setPcrHistory(pcrRows);
       setLastUpdated(new Date());
