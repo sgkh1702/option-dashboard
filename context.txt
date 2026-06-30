@@ -1,0 +1,73 @@
+## Project: myoptiondashboard.netlify.app
+
+## Repos
+- Frontend:  D:\option-dashboard       → Netlify auto-deploy on push
+- Backend:   D:\option-dashboard\backend → Render auto-deploy on push
+- GSheet writer: D:\optionchain\gsheet_bnf.py → runs locally every 5 min
+
+## Backend (Render) — screener_proxy.py
+- Flask proxy serving frontend requests
+- BG thread: runs every 5 min, writes ScreenerData to GSheet (20 bull + 20 bear)
+- Market hours guard: skips BG cycle outside Mon-Fri 09:15-15:35 IST
+- Keep-warm self-ping every 8 min (prevents Render free tier spin-down)
+- CORS, fno.csv, Google credentials (env var) all on Render
+- ORB Two-Phase System:
+  - Phase 1 (once at 9:30am): scans all 209 F&O stocks via yfinance 15min candles
+    finds ORB High > PDH (bull) or ORB Low < PDL (bear) → builds _orb_shortlist
+  - Phase 2 (every 5min, instant): checks _orb_shortlist vs already-fetched quotes
+    trigger = day_high > orb_high (bull) or day_low < orb_low (bear) — candle H/L not LTP
+    updates _orb_results cache, writes to GSheet ORBData tab
+  - /orb endpoint: serves from _orb_results cache instantly (no yfinance on demand)
+
+## Frontend (Netlify)
+- useSheetData.js: fetches BNFData/NFData, rawRows for OIChart, parsedRows for others
+- Dashboard.jsx: passes rawRows to OIChart, parsedRows to StraddleStrangle
+- IntradayScreener.jsx:
+  - On mount: loadFromSheet() fetches last 40 rows of ScreenerData (instant, <1sec)
+  - Then immediately: runScreener() for live data + fetchOrb() for ORB tab
+  - Every 5 min: auto-refresh from Render
+  - Manual Refresh: triggers runScreener() immediately
+- OIChart.jsx: strike dropdown per chart (ATM+1/ATM/ATM-1), user-selectable
+  data from rawRows filtered by strike (no separate ATM sheet tabs needed)
+
+## GSheet tabs written by gsheet_bnf.py (local)
+- BNFData, NFData         — option chain raw rows (11 strikes every 5 min)
+- BNiftyPCR, NiftyPCR     — overall CE/PE OI history with composite signal
+- Banknifty2, Nifty2      — dashboard display tab
+- BNF_Chart, NF_Chart     — embedded charts
+- ScreenerData            — top 20 bull + 20 bear every 5 min (written by Render BG thread)
+- ORBData                 — ORB setups + status updated every 5 min (written by Render BG thread)
+
+## Signal System (BNiftyPCR)
+- 5-factor composite score: ΔOI Flow(40%) + IV Skew(30%) + Max Pain(20%) + OTM(10%)
+- Signals: SC (Sell Call), SP (Sell Put), SS (Short Straddle), SG (Short Strangle)
+           BC (Buy Call), BP (Buy Put), — (no signal)
+
+## ATR
+- Calculated from yfinance daily OHLC — not a direct yfinance value
+- Fallback: uses available days (min 2) if < 14 days data
+- atr_consumed = abs(ltp - day_open) / atr * 100
+- Filter in screener: dropdown ≤50/60/70/80/90% or Off (default 80%)
+
+## ORB Strategy (user-defined)
+- Setup: ORB High > Prev Day High (bull) / ORB Low < Prev Day Low (bear)
+- Entry: candle HIGH crosses ORB High (bull) / candle LOW crosses ORB Low (bear)
+- Stop:  ORB Low (bull) / ORB High (bear)
+- Target: ORB High + 1×ATR (reference only — user checks DZ/SZ on 5/15min chart)
+- ATR filter: skip if ATR consumed > 80% at entry time
+
+## Env Vars
+- Frontend .env: VITE_GSHEET_API_KEY, VITE_SHEET_ID
+                 VITE_PROXY_URL=https://dhan-screener-proxy.onrender.com
+- Backend Render: GOOGLE_CREDENTIALS_JSON
+
+## Bugs fixed
+- 2026-05-11: Straddle/Strangle combined=0 — rawRows (arrays) passed where parsedRows needed
+- 2026-05-11: ORB=0 on load — fetchOrb() not called on mount independently
+- 2026-05-11: Screener stale data — runScreener() not called after loadFromSheet()
+- 2026-05-11: Pre-market junk in ScreenerData — BG thread had no market hours guard
+- 2026-05-12: ORB slow (3-5 min) — replaced on-demand yfinance scan with two-phase cache
+- 2026-05-12: ATR=None for some stocks — fallback to available days (min 2)
+- 2026-05-12: ScreenerData header repeated — now written once per day only
+- 2026-05-12: ScreenerData missing columns — added Day Open, Prev Close, ATR, ATR Used%
+- 2026-05-12: OIChart growing strikes — chain now sliced to ATM±5 after ATM calculated
