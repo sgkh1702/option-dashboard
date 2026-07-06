@@ -196,7 +196,14 @@ function Row({ rank, d, bias, tab, scoreKey }) {
         </span>
       </td>
       <td className="px-2 py-2">
-        <div className="font-semibold text-sm text-gray-800">{d.symbol}</div>
+        <a
+          href={`https://www.tradingview.com/chart/?symbol=NSE%3A${d.symbol}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-semibold text-sm text-blue-600 hover:underline"
+        >
+          {d.symbol}
+        </a>
       </td>
       <td className="px-2 py-2 text-right">
         <div className="font-mono text-xs font-semibold text-gray-800">{cmpStr}</div>
