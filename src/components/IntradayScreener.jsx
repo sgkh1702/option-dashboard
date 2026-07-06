@@ -303,7 +303,7 @@ function OrbTable({ rows, side }) {
             const stop    = isBull ? r.orb_low      : r.orb_high;
             const rr      = isBull ? r.bull_rr      : r.bear_rr;
             const trigger = isBull ? r.bull_trigger_candle : r.bear_trigger_candle;
-            const refLvl  = isBull ? r.prev_high    : r.prev_low;
+            const refLvl  = isBull ? r.pdh          : r.pdl;
             const isTriggered = status === "Triggered";
             const rowBg   = isTriggered
               ? (isBull ? "bg-emerald-50" : "bg-red-50")
@@ -408,7 +408,7 @@ function OrbPanel({ orbData, orbStatus, onRefresh }) {
       <div className="flex gap-3 text-[11px] text-gray-500 flex-wrap">
         <span className="flex items-center gap-1"><span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-300">Triggered</span> Breakout confirmed</span>
         <span className="flex items-center gap-1"><span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 border border-blue-300">Watching</span> Setup valid, waiting</span>
-        <span className="flex items-center gap-1"><span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-300">Missed</span> Triggered but ATR &gt; 80%</span>
+        <span className="flex items-center gap-1"><span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-300">Missed</span> ATR &gt; 80%, broke out after C2-4, or window closed</span>
         <span className="flex items-center gap-1"><span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-600 border border-red-300">Failed</span> Broke the other side</span>
         <span className="ml-auto text-gray-400">C2/C3/C4 = which 5-min candle (from 9:30) triggered</span>
       </div>
