@@ -8,11 +8,15 @@ const Row=({label,ce,pe,combined,fmt})=>(
     <td className="text-right py-1.5 px-3 font-medium text-xs tabular-nums">{fmt(combined)}</td>
   </tr>
 );
+// IV is never legitimately 0 in a real market — treat 0, null, undefined, and "" all as "missing"
+// and fall back to the default. `??` alone doesn't catch 0 or "", which was the root cause of
+// Delta/Gamma/Vega breaking (iv=0 -> sigma=0 -> division by zero in Black-Scholes).
+const cleanIv = v => (v === null || v === undefined || v === "" || Number(v) === 0) ? null : Number(v);
 export default function GreeksPanel({ chain, strikeC, strikeP, spot, dte, mode="straddle" }) {
   const result=useMemo(()=>{
     if(!spot||!strikeC||!chain?.length)return null;
     const ceRow=chain.find(r=>r.strike===strikeC), peRow=chain.find(r=>r.strike===(mode==="strangle"?strikeP:strikeC));
-    const ivC=ceRow?.ce_iv??14, ivP=peRow?.pe_iv??14, T=Math.max(0.001,dte/365);
+    const ivC=cleanIv(ceRow?.ce_iv) ?? 14, ivP=cleanIv(peRow?.pe_iv) ?? 14, T=Math.max(0.001,dte/365);
     return { ce:greeks(spot,strikeC,T,ivC,"call"), pe:greeks(spot,mode==="strangle"?strikeP:strikeC,T,ivP,"put"), ivC, ivP };
   },[chain,strikeC,strikeP,spot,dte,mode]);
   if(!result)return <div className="text-gray-400 text-sm p-4">Select a strike to view Greeks.</div>;
