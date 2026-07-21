@@ -145,6 +145,10 @@ function ChainTable({ chain, atmStrike, selectedStrike, onSelectStrike }) {
 
   const maxCeStrike = chain.reduce((b, r) => (r.ce_oi ?? 0) > (b.ce_oi ?? 0) ? r : b, chain[0]).strike;
   const maxPeStrike = chain.reduce((b, r) => (r.pe_oi ?? 0) > (b.pe_oi ?? 0) ? r : b, chain[0]).strike;
+  // Max OI *change* — today's freshest writing, distinct from stale accumulated OI above.
+  // Only considers positive buildup (ignores unwinding) since fresh writing is what forms a new wall.
+  const maxCeChgStrike = chain.reduce((b, r) => (r.ce_oi_chg ?? 0) > (b.ce_oi_chg ?? 0) ? r : b, chain[0]).strike;
+  const maxPeChgStrike = chain.reduce((b, r) => (r.pe_oi_chg ?? 0) > (b.pe_oi_chg ?? 0) ? r : b, chain[0]).strike;
 
   const ceBg = s => s === atmStrike ? "#fefce8" : s < atmStrike ? "#dcfce7" : "#fee2e2";
   const peBg = s => s === atmStrike ? "#fefce8" : s > atmStrike ? "#dcfce7" : "#fee2e2";
@@ -164,6 +168,8 @@ function ChainTable({ chain, atmStrike, selectedStrike, onSelectStrike }) {
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm border border-red-400 inline-block" style={{ backgroundColor: "#fee2e2" }}/>OTM CE</span>
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm inline-block" style={{ backgroundColor: "#93c5fd" }}/>Max CE</span>
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm inline-block" style={{ backgroundColor: "#fdba74" }}/>Max PE</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm inline-block border-2" style={{ borderColor: "#1d4ed8" }}/>Max CE ΔOI</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm inline-block border-2" style={{ borderColor: "#c2410c" }}/>Max PE ΔOI</span>
       </div>
       <div className="overflow-auto flex-1">
         <table className="w-full tabular-nums" style={{ fontSize: "10px" }}>
@@ -185,9 +191,11 @@ function ChainTable({ chain, atmStrike, selectedStrike, onSelectStrike }) {
           </thead>
           <tbody>
             {chain.map(row => {
-              const isATM   = row.strike === atmStrike;
-              const isMaxCe = row.strike === maxCeStrike;
-              const isMaxPe = row.strike === maxPeStrike;
+              const isATM      = row.strike === atmStrike;
+              const isMaxCe    = row.strike === maxCeStrike;
+              const isMaxPe    = row.strike === maxPeStrike;
+              const isMaxCeChg = row.strike === maxCeChgStrike && (row.ce_oi_chg ?? 0) > 0;
+              const isMaxPeChg = row.strike === maxPeChgStrike && (row.pe_oi_chg ?? 0) > 0;
               return (
                 <tr key={row.strike} onClick={() => onSelectStrike(row.strike)}
                   className="cursor-pointer border-t border-gray-100 hover:brightness-95 transition-all"
@@ -195,7 +203,7 @@ function ChainTable({ chain, atmStrike, selectedStrike, onSelectStrike }) {
                   <td className="text-center px-1 py-1" style={{ backgroundColor: ceBg(row.strike) }}>
                     <span className={`px-1 py-0.5 rounded text-[8px] font-bold ${SIG[row.signal] ?? "text-gray-400"}`}>{row.signal || "—"}</span>
                   </td>
-                  <td className="text-right px-1 py-1 font-medium" style={{ backgroundColor: ceBg(row.strike), color: row.ce_oi_chg > 0 ? "#15803d" : "#dc2626" }}>{fmtK(row.ce_oi_chg)}</td>
+                  <td className="text-right px-1 py-1 font-medium" style={{ backgroundColor: ceBg(row.strike), color: row.ce_oi_chg > 0 ? "#15803d" : "#dc2626", ...(isMaxCeChg ? { border: "2px solid #1d4ed8" } : {}) }}>{fmtK(row.ce_oi_chg)}</td>
                   <td className="text-right px-1 py-1 font-medium" style={isMaxCe ? { backgroundColor: "#93c5fd", color: "#1e3a8a" } : { backgroundColor: ceBg(row.strike), color: "#1d4ed8" }}>{fmtK(row.ce_oi)}</td>
                   <td className="text-right px-1 py-1 text-gray-500" style={{ backgroundColor: ceBg(row.strike) }}>{fmt(row.ce_iv)}</td>
                   <td className="text-right px-1 py-1 font-semibold" style={{ backgroundColor: ceBg(row.strike), color: "#2563eb" }}>{fmt(row.ce_ltp)}</td>
@@ -206,7 +214,7 @@ function ChainTable({ chain, atmStrike, selectedStrike, onSelectStrike }) {
                   <td className="text-right px-1 py-1 font-semibold" style={{ backgroundColor: peBg(row.strike), color: "#be185d" }}>{fmt(row.pe_ltp)}</td>
                   <td className="text-right px-1 py-1 text-gray-500" style={{ backgroundColor: peBg(row.strike) }}>{fmt(row.pe_iv)}</td>
                   <td className="text-right px-1 py-1 font-medium" style={isMaxPe ? { backgroundColor: "#fdba74", color: "#7c2d12" } : { backgroundColor: peBg(row.strike), color: "#9d174d" }}>{fmtK(row.pe_oi)}</td>
-                  <td className="text-right px-1 py-1 font-medium" style={{ backgroundColor: peBg(row.strike), color: row.pe_oi_chg > 0 ? "#15803d" : "#dc2626" }}>{fmtK(row.pe_oi_chg)}</td>
+                  <td className="text-right px-1 py-1 font-medium" style={{ backgroundColor: peBg(row.strike), color: row.pe_oi_chg > 0 ? "#15803d" : "#dc2626", ...(isMaxPeChg ? { border: "2px solid #c2410c" } : {}) }}>{fmtK(row.pe_oi_chg)}</td>
                   <td className="text-center px-1 py-1" style={{ backgroundColor: peBg(row.strike) }}>
                     <span className={`px-1 py-0.5 rounded text-[8px] font-bold ${SIG[row.pe_signal] ?? "text-gray-400"}`}>{row.pe_signal || "—"}</span>
                   </td>
