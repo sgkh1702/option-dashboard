@@ -8,11 +8,13 @@ export const SHEETS = {
 
 // RAW sheet columns (0-indexed):
 // Time, Signal, CE OI Change, CE OI, CE IV, CE Change LTP, LTP(CE), Strike,
-// LTP2(PE), PE Change LTP, PE IV, PE OI, PE OI Change, PE Signal, PCR
+// LTP2(PE), PE Change LTP, PE IV, PE OI, PE OI Change, PE Signal, PCR,
+// CE Volume, PE Volume  (NF sheet has Expiry after these, at col 17 — see NF_EXPIRY_COL in useSheetData.js)
 export const RAW_COLS = {
   time:0, signal:1, ce_oi_chg:2, ce_oi:3, ce_iv:4,
   ce_ltp_chg:5, ce_ltp:6, strike:7,
   pe_ltp:8, pe_ltp_chg:9, pe_iv:10, pe_oi:11, pe_oi_chg:12, pe_signal:13, pcr:14,
+  ce_volume:15, pe_volume:16,
 };
 
 // PCR sheet: Time, CE OI Change, PE OI Change, CE OI, PE OI, Difference, Signal, Spot

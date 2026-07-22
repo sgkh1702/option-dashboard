@@ -4,9 +4,9 @@ import { SHEETS, RAW_COLS, PCR_COLS, ATM_COLS } from "../config/sheets";
 
 const WINDOW = 5; // ATM +/- 5 strikes shown in chain
 
-// Col index of Expiry in NF raw sheet (col P = index 15)
-// BNF has no Expiry column — stays at A:O (15 cols)
-const NF_EXPIRY_COL = 15;
+// Col index of Expiry in NF raw sheet (col R = index 17, after CE/PE Volume were
+// inserted at 15/16 ahead of it). BNF has no Expiry column — stays at A:Q (17 cols).
+const NF_EXPIRY_COL = 17;
 
 export function useSheetData() {
   const [data,        setData]        = useState(null);
@@ -29,9 +29,9 @@ export function useSheetData() {
       const isNifty = indexKey === "NIFTY";
 
       // ── 1. Fetch raw sheet ────────────────────────────────────────────────
-      // NF: A:P (16 cols — col P = Expiry)
-      // BNF + others: A:O (15 cols)
-      const range  = isNifty ? "A:P" : "A:O";
+      // NF: A:R (18 cols — cols P,Q = CE/PE Volume, col R = Expiry)
+      // BNF + others: A:Q (17 cols — cols P,Q = CE/PE Volume)
+      const range  = isNifty ? "A:R" : "A:Q";
       let   allRaw = await fetchRange(sheetCfg.raw, range)
         .then(rows => rows.filter(r => r[7] && r[0]));
 

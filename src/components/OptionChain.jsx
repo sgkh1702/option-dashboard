@@ -173,6 +173,8 @@ function ChainTable({ chain, atmStrike, selectedStrike, onSelectStrike, spot, dt
   const totPeOi    = chain.reduce((s, r) => s + (Number(r.pe_oi)     || 0), 0);
   const totCeOiChg = chain.reduce((s, r) => s + (Number(r.ce_oi_chg) || 0), 0);
   const totPeOiChg = chain.reduce((s, r) => s + (Number(r.pe_oi_chg) || 0), 0);
+  const totCeVol   = chain.reduce((s, r) => s + (Number(r.ce_volume) || 0), 0);
+  const totPeVol   = chain.reduce((s, r) => s + (Number(r.pe_volume) || 0), 0);
   const totPcr     = totCeOi ? (totPeOi / totCeOi).toFixed(2) : "-";
 
   return (
@@ -195,11 +197,13 @@ function ChainTable({ chain, atmStrike, selectedStrike, onSelectStrike, spot, dt
               <th className="text-center px-1 py-1.5">Sig</th>
               <th className="text-right px-1 py-1.5">CE ΔOI</th>
               <th className="text-right px-1 py-1.5">CE OI</th>
+              <th className="text-right px-1 py-1.5">CE Vol</th>
               <th className="text-right px-1 py-1.5">CE IV</th>
               <th className="text-right px-1 py-1.5" style={{ color: "#93c5fd" }}>CE LTP</th>
               <th className="text-center px-1.5 py-1.5" style={{ backgroundColor: "#0f172a", color: "#fde047" }}>Strike</th>
               <th className="text-right px-1 py-1.5" style={{ color: "#f9a8d4" }}>PE LTP</th>
               <th className="text-right px-1 py-1.5">PE IV</th>
+              <th className="text-right px-1 py-1.5">PE Vol</th>
               <th className="text-right px-1 py-1.5">PE OI</th>
               <th className="text-right px-1 py-1.5">PE ΔOI</th>
               <th className="text-center px-1 py-1.5">PE Sig</th>
@@ -224,6 +228,7 @@ function ChainTable({ chain, atmStrike, selectedStrike, onSelectStrike, spot, dt
                   </td>
                   <td className="text-right px-1 py-1 font-medium" style={{ backgroundColor: ceBg(row.strike), color: row.ce_oi_chg > 0 ? "#15803d" : "#dc2626", ...(isMaxCeChg ? { border: "2px solid #1d4ed8" } : {}) }}>{fmtK(row.ce_oi_chg)}</td>
                   <td className="text-right px-1 py-1 font-medium" style={isMaxCe ? { backgroundColor: "#93c5fd", color: "#1e3a8a" } : { backgroundColor: ceBg(row.strike), color: "#1d4ed8" }}>{fmtK(row.ce_oi)}</td>
+                  <td className="text-right px-1 py-1 text-gray-500" style={{ backgroundColor: ceBg(row.strike) }}>{fmtK(row.ce_volume)}</td>
                   <td className="text-right px-1 py-1 text-gray-500" style={{ backgroundColor: ceBg(row.strike) }} title={ceIv.derived ? "Derived via Black-Scholes inversion from LTP" : undefined}>
                     {ceIv.iv == null ? "-" : `${ceIv.derived ? "~" : ""}${ceIv.iv.toFixed(1)}%`}
                   </td>
@@ -236,6 +241,7 @@ function ChainTable({ chain, atmStrike, selectedStrike, onSelectStrike, spot, dt
                   <td className="text-right px-1 py-1 text-gray-500" style={{ backgroundColor: peBg(row.strike) }} title={peIv.derived ? "Derived via Black-Scholes inversion from LTP" : undefined}>
                     {peIv.iv == null ? "-" : `${peIv.derived ? "~" : ""}${peIv.iv.toFixed(1)}%`}
                   </td>
+                  <td className="text-right px-1 py-1 text-gray-500" style={{ backgroundColor: peBg(row.strike) }}>{fmtK(row.pe_volume)}</td>
                   <td className="text-right px-1 py-1 font-medium" style={isMaxPe ? { backgroundColor: "#fdba74", color: "#7c2d12" } : { backgroundColor: peBg(row.strike), color: "#9d174d" }}>{fmtK(row.pe_oi)}</td>
                   <td className="text-right px-1 py-1 font-medium" style={{ backgroundColor: peBg(row.strike), color: row.pe_oi_chg > 0 ? "#15803d" : "#dc2626", ...(isMaxPeChg ? { border: "2px solid #c2410c" } : {}) }}>{fmtK(row.pe_oi_chg)}</td>
                   <td className="text-center px-1 py-1" style={{ backgroundColor: peBg(row.strike) }}>
@@ -251,9 +257,11 @@ function ChainTable({ chain, atmStrike, selectedStrike, onSelectStrike, spot, dt
               <td className="text-center px-1 py-1 text-gray-400 uppercase text-[8px]">Tot</td>
               <td className="text-right px-1 py-1" style={{ color: totCeOiChg > 0 ? "#15803d" : "#dc2626" }}>{fmtK(totCeOiChg)}</td>
               <td className="text-right px-1 py-1 text-blue-700">{fmtK(totCeOi)}</td>
+              <td className="text-right px-1 py-1 text-gray-500">{fmtK(totCeVol)}</td>
               <td colSpan={2} />
               <td className="text-center px-1 py-1 text-gray-400 uppercase text-[8px]" style={{ backgroundColor: "#e2e8f0" }}>Tot</td>
               <td colSpan={2} />
+              <td className="text-right px-1 py-1 text-gray-500">{fmtK(totPeVol)}</td>
               <td className="text-right px-1 py-1 text-pink-700">{fmtK(totPeOi)}</td>
               <td className="text-right px-1 py-1" style={{ color: totPeOiChg > 0 ? "#15803d" : "#dc2626" }}>{fmtK(totPeOiChg)}</td>
               <td />
