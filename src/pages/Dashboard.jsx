@@ -233,6 +233,7 @@ export default function Dashboard() {
               pcrHistory={pcrHistory}
               selectedExpiry={selectedExpiry}
               lastUpdated={lastUpdated}
+              spot={spot} dte={dte}
             />
           )}
 

@@ -1,5 +1,6 @@
 import { useRef, useMemo, useEffect } from "react";
 import { Chart, registerables } from "chart.js";
+import { impliedVol } from "../utils/blackScholes";
 Chart.register(...registerables);
 
 const CE_COLOR  = "#378ADD";
@@ -13,6 +14,20 @@ const SIG = {
 };
 
 const SIG_DOT = { SB: "#fca5a5", LB: "#86efac", SC: "#fcd34d", LU: "#d8b4fe" };
+
+// Same "0/null/''/undefined all mean missing" rule as GreeksPanel.jsx's cleanIv.
+const cleanIv = v => (v === null || v === undefined || v === "" || Number(v) === 0) ? null : Number(v);
+
+// Resolves a row's IV: sheet value if present, else Black-Scholes-derived from
+// ltp (when spot/T are available), else null (renders as "-"). Mirrors the
+// priority order used in GreeksPanel.jsx's resolveIv.
+function ivFor(sheetIv, ltp, spot, K, T, type) {
+  const fromSheet = cleanIv(sheetIv);
+  if (fromSheet != null) return { iv: fromSheet, derived: false };
+  if (!spot || !T || !(Number(ltp) > 0)) return { iv: null, derived: false };
+  const derived = impliedVol(spot, K, T, Number(ltp), type);
+  return derived > 0 ? { iv: derived, derived: true } : { iv: null, derived: false };
+}
 
 function mkDs(label, data, color) {
   return { label, data, borderColor: color, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, tension: 0.3, fill: false };
@@ -135,9 +150,10 @@ function PcrTable({ rows }) {
 }
 
 // ── Option chain table ───────────────────────────────────────────────────────
-function ChainTable({ chain, atmStrike, selectedStrike, onSelectStrike }) {
+function ChainTable({ chain, atmStrike, selectedStrike, onSelectStrike, spot, dte }) {
   const fmt  = v => v == null || v === "" ? "-" : Number(v).toLocaleString("en-IN", { maximumFractionDigits: 2 });
   const fmtK = v => v == null || v === "" ? "-" : (Number(v) / 1000).toFixed(1) + "K";
+  const T    = dte != null ? Math.max(0.001, dte / 365) : null;
 
   if (!chain?.length) return (
     <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">No chain data.</div>
@@ -170,6 +186,7 @@ function ChainTable({ chain, atmStrike, selectedStrike, onSelectStrike }) {
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm inline-block" style={{ backgroundColor: "#fdba74" }}/>Max PE</span>
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm inline-block border-2" style={{ borderColor: "#1d4ed8" }}/>Max CE ΔOI</span>
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm inline-block border-2" style={{ borderColor: "#c2410c" }}/>Max PE ΔOI</span>
+        <span className="flex items-center gap-1 italic text-gray-400">~ = derived IV (Breeze has no IV feed)</span>
       </div>
       <div className="overflow-auto flex-1">
         <table className="w-full tabular-nums" style={{ fontSize: "10px" }}>
@@ -196,6 +213,8 @@ function ChainTable({ chain, atmStrike, selectedStrike, onSelectStrike }) {
               const isMaxPe    = row.strike === maxPeStrike;
               const isMaxCeChg = row.strike === maxCeChgStrike && (row.ce_oi_chg ?? 0) > 0;
               const isMaxPeChg = row.strike === maxPeChgStrike && (row.pe_oi_chg ?? 0) > 0;
+              const ceIv = ivFor(row.ce_iv, row.ce_ltp, spot, row.strike, T, "call");
+              const peIv = ivFor(row.pe_iv, row.pe_ltp, spot, row.strike, T, "put");
               return (
                 <tr key={row.strike} onClick={() => onSelectStrike(row.strike)}
                   className="cursor-pointer border-t border-gray-100 hover:brightness-95 transition-all"
@@ -205,14 +224,18 @@ function ChainTable({ chain, atmStrike, selectedStrike, onSelectStrike }) {
                   </td>
                   <td className="text-right px-1 py-1 font-medium" style={{ backgroundColor: ceBg(row.strike), color: row.ce_oi_chg > 0 ? "#15803d" : "#dc2626", ...(isMaxCeChg ? { border: "2px solid #1d4ed8" } : {}) }}>{fmtK(row.ce_oi_chg)}</td>
                   <td className="text-right px-1 py-1 font-medium" style={isMaxCe ? { backgroundColor: "#93c5fd", color: "#1e3a8a" } : { backgroundColor: ceBg(row.strike), color: "#1d4ed8" }}>{fmtK(row.ce_oi)}</td>
-                  <td className="text-right px-1 py-1 text-gray-500" style={{ backgroundColor: ceBg(row.strike) }}>{fmt(row.ce_iv)}</td>
+                  <td className="text-right px-1 py-1 text-gray-500" style={{ backgroundColor: ceBg(row.strike) }} title={ceIv.derived ? "Derived via Black-Scholes inversion from LTP" : undefined}>
+                    {ceIv.iv == null ? "-" : `${ceIv.derived ? "~" : ""}${ceIv.iv.toFixed(1)}%`}
+                  </td>
                   <td className="text-right px-1 py-1 font-semibold" style={{ backgroundColor: ceBg(row.strike), color: "#2563eb" }}>{fmt(row.ce_ltp)}</td>
                   <td className="text-center px-1.5 py-1 font-bold" style={isATM ? { backgroundColor: "#fef9c3", color: "#92400e" } : { backgroundColor: "#fff", color: "#374151" }}>
                     {row.strike.toLocaleString("en-IN")}
                     {isATM && <span className="ml-0.5 text-[7px] font-black px-0.5 rounded" style={{ backgroundColor: "#fde047", color: "#78350f" }}>ATM</span>}
                   </td>
                   <td className="text-right px-1 py-1 font-semibold" style={{ backgroundColor: peBg(row.strike), color: "#be185d" }}>{fmt(row.pe_ltp)}</td>
-                  <td className="text-right px-1 py-1 text-gray-500" style={{ backgroundColor: peBg(row.strike) }}>{fmt(row.pe_iv)}</td>
+                  <td className="text-right px-1 py-1 text-gray-500" style={{ backgroundColor: peBg(row.strike) }} title={peIv.derived ? "Derived via Black-Scholes inversion from LTP" : undefined}>
+                    {peIv.iv == null ? "-" : `${peIv.derived ? "~" : ""}${peIv.iv.toFixed(1)}%`}
+                  </td>
                   <td className="text-right px-1 py-1 font-medium" style={isMaxPe ? { backgroundColor: "#fdba74", color: "#7c2d12" } : { backgroundColor: peBg(row.strike), color: "#9d174d" }}>{fmtK(row.pe_oi)}</td>
                   <td className="text-right px-1 py-1 font-medium" style={{ backgroundColor: peBg(row.strike), color: row.pe_oi_chg > 0 ? "#15803d" : "#dc2626", ...(isMaxPeChg ? { border: "2px solid #c2410c" } : {}) }}>{fmtK(row.pe_oi_chg)}</td>
                   <td className="text-center px-1 py-1" style={{ backgroundColor: peBg(row.strike) }}>
@@ -249,6 +272,7 @@ export default function OptionChain({
   pcrHistory,
   selectedExpiry,
   lastUpdated,
+  spot, dte,
 }) {
   if (!chain?.length) return (
     <div className="text-gray-400 text-sm p-6 text-center">
@@ -273,7 +297,8 @@ export default function OptionChain({
            style={{ height: "calc(100vh - 220px)", minHeight: 480 }}>
         <div className="flex flex-col overflow-hidden border-r border-gray-200" style={{ flex: "0 0 60%" }}>
           <ChainTable chain={chain} atmStrike={atmStrike}
-            selectedStrike={selectedStrike} onSelectStrike={onSelectStrike} />
+            selectedStrike={selectedStrike} onSelectStrike={onSelectStrike}
+            spot={spot} dte={dte} />
         </div>
         <div className="flex flex-col overflow-hidden" style={{ flex: "0 0 40%" }}>
           <OverallChart pcrHistory={pcrHistory} />
