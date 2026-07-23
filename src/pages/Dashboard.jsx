@@ -234,6 +234,7 @@ export default function Dashboard() {
               selectedExpiry={selectedExpiry}
               lastUpdated={lastUpdated}
               spot={spot} dte={dte}
+              symbol={indexKey}
             />
           )}
 

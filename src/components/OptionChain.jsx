@@ -1,6 +1,7 @@
 import { useRef, useMemo, useEffect } from "react";
 import { Chart, registerables } from "chart.js";
 import { impliedVol } from "../utils/blackScholes";
+import FuturesSignal from "./FuturesSignal";
 Chart.register(...registerables);
 
 const CE_COLOR  = "#378ADD";
@@ -281,6 +282,7 @@ export default function OptionChain({
   selectedExpiry,
   lastUpdated,
   spot, dte,
+  symbol,
 }) {
   if (!chain?.length) return (
     <div className="text-gray-400 text-sm p-6 text-center">
@@ -290,7 +292,7 @@ export default function OptionChain({
 
   return (
     <div className="flex flex-col gap-0">
-      {/* Status bar — sheets data only */}
+      {/* Status bar — sheets data + futures signal (Nifty/BankNifty only) */}
       <div className="flex items-center gap-3 px-3 py-1 bg-blue-50 border border-blue-100 rounded-lg mb-2 text-xs text-blue-600">
         <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block"/>
         Sheets data · {selectedExpiry ?? ""}
@@ -299,6 +301,7 @@ export default function OptionChain({
             · updated {lastUpdated.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
           </span>
         )}
+        <FuturesSignal symbol={symbol} />
       </div>
 
       <div className="flex gap-0 border border-gray-200 rounded-lg overflow-hidden"
