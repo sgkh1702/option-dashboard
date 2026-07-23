@@ -235,6 +235,7 @@ export default function Dashboard() {
               lastUpdated={lastUpdated}
               spot={spot} dte={dte}
               symbol={indexKey}
+              step={indexConfig.step}
             />
           )}
 

@@ -2,6 +2,7 @@ import { useRef, useMemo, useEffect } from "react";
 import { Chart, registerables } from "chart.js";
 import { impliedVol } from "../utils/blackScholes";
 import FuturesSignal from "./FuturesSignal";
+import TradeSuggestion from "./TradeSuggestion";
 Chart.register(...registerables);
 
 const CE_COLOR  = "#378ADD";
@@ -282,7 +283,7 @@ export default function OptionChain({
   selectedExpiry,
   lastUpdated,
   spot, dte,
-  symbol,
+  symbol, step,
 }) {
   if (!chain?.length) return (
     <div className="text-gray-400 text-sm p-6 text-center">
@@ -302,6 +303,11 @@ export default function OptionChain({
           </span>
         )}
         <FuturesSignal symbol={symbol} />
+      </div>
+
+      {/* Trade suggestion — combines OI wall + ATM IV + trend light */}
+      <div className="mb-2">
+        <TradeSuggestion chain={chain} atmStrike={atmStrike} spot={spot} dte={dte} step={step} symbol={symbol} />
       </div>
 
       <div className="flex gap-0 border border-gray-200 rounded-lg overflow-hidden"
