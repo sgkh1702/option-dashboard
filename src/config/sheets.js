@@ -55,8 +55,12 @@ export const MARKET_VIEW_RANGES = {
     historicalNet:              "L1:O8",
   },
   fiiStats: {
-    tab: "FII Stat",
+    tab: "FIIStat",
     range: "W2:X6",
+  },
+  fiiNiftyBankNet: {
+    tab: "FIIStat",
+    range: "S1:U8",
   },
   dashboard: {
     tab: "Dashboard",
@@ -70,13 +74,13 @@ export const MARKET_VIEW_RANGES = {
   scanner: {
     tab: "scanner",
     gainersLargecap: "B110:F120",
-    gainersMidcap:   "G110:K120",
-    gainersSmallcap: "L110:P120",
+    gainersMidcap:   "H110:L120",
+    gainersSmallcap: "N110:R120",
     loosersLargecap: "B125:F135",
-    loosersMidcap:   "G125:K135",
-    loosersSmallcap: "L125:P135",
-    near52Low:       "B88:E90",
-    near52High:      "G88:J90",
+    loosersMidcap:   "H125:L135",
+    loosersSmallcap: "N125:R135",
+    near52Low:       "B88:E103",
+    near52High:      "G88:J103",
     breadth:         "B140:C144",
   },
 };

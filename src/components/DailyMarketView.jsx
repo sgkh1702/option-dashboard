@@ -1,17 +1,27 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Chart, registerables } from "chart.js";
 Chart.register(...registerables);
 import { useMarketViewData } from "../hooks/useMarketViewData";
+
+const PROXY = import.meta.env.VITE_PROXY_URL ?? "http://localhost:5000";
 
 function pickCols(rows, indices) {
   if (!rows) return rows;
   return rows.map(row => indices.map(i => row[i]));
 }
 
+// Drops rows whose first cell is blank -- used for lists with a variable
+// number of entries (e.g. up to 15 stocks for 52-week range) so short lists
+// don't leave a wall of empty rows.
+function trimBlanks(rows) {
+  if (!rows) return rows;
+  return rows.filter((r, i) => i === 0 || (r[0] && String(r[0]).trim() !== ""));
+}
+
 function SimpleTable({ title, rows }) {
   return (
     <div className="p-3 border border-gray-200 rounded-lg overflow-x-auto">
-      <div className="text-sm font-medium text-gray-700 mb-2">{title}</div>
+      {title && <div className="text-sm font-medium text-gray-700 mb-2">{title}</div>}
       {(!rows || rows.length === 0)
         ? <div className="text-xs text-gray-400">No data</div>
         : (
@@ -41,6 +51,102 @@ function Section({ title, children }) {
   );
 }
 
+// ── Index Strip ────────────────────────────────────────────────────────────
+function changeColor(change) {
+  const v = parseFloat(change);
+  if (isNaN(v) || v === 0) return "text-gray-500";
+  return v > 0 ? "text-green-600" : "text-red-600";
+}
+
+function IndexStripItem({ label, value, change }) {
+  return (
+    <div className="flex items-baseline gap-2">
+      <span className="text-xs text-gray-400">{label}</span>
+      <span className="text-sm font-semibold text-gray-800">{value}</span>
+      <span className={`text-xs font-medium ${changeColor(change)}`}>
+        {parseFloat(change) > 0 ? "+" : ""}{change}
+      </span>
+    </div>
+  );
+}
+
+function IndexStrip({ indexStripRow, usdinrVixRows }) {
+  const items = [];
+  const r = indexStripRow || [];
+  if (r.length > 2)  items.push({ label: r[0]  ?? "Nifty",     value: r[1],  change: r[2]  });
+  if (r.length > 7)  items.push({ label: r[5]  ?? "BankNifty", value: r[6],  change: r[7]  });
+  if (r.length > 12) items.push({ label: r[10] ?? "Sensex",    value: r[11], change: r[12] });
+
+  const vixRow    = usdinrVixRows?.[1];
+  const usdinrRow = usdinrVixRows?.[0];
+  if (vixRow)    items.push({ label: "IndiaVIX", value: vixRow[1],    change: vixRow[2]    });
+  if (usdinrRow) items.push({ label: "USDINR",   value: usdinrRow[1], change: usdinrRow[2] });
+
+  if (items.length === 0) return <div className="text-xs text-gray-400">No data</div>;
+  return (
+    <div className="flex flex-wrap gap-6 p-3 border border-gray-200 rounded-lg">
+      {items.map((it, i) => <IndexStripItem key={i} {...it} />)}
+    </div>
+  );
+}
+
+// ── Sentiment + Max OI ───────────────────────────────────────────────────
+function SentimentStrip({ niftyPcr, bnfPcr, maxOi }) {
+  const fmtOi = (v) => (v == null ? "-" : Number(v).toLocaleString("en-IN"));
+  return (
+    <div className="p-3 border border-gray-200 rounded-lg text-sm space-y-3">
+      <div className="flex gap-6 items-center flex-wrap">
+        <div><span className="text-gray-400 text-xs">Nifty PCR</span> <span className="font-medium ml-1">{niftyPcr ?? "-"}</span></div>
+        <div><span className="text-gray-400 text-xs">BankNifty PCR</span> <span className="font-medium ml-1">{bnfPcr ?? "-"}</span></div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+        <div className="border border-gray-100 rounded-md p-2">
+          <div className="text-gray-400 mb-1">Nifty — Max OI (nearest expiry)</div>
+          <div>Max CE OI: <span className="font-medium">{maxOi?.nifty?.maxCeStrike ?? "-"}</span> ({fmtOi(maxOi?.nifty?.maxCeOi)})</div>
+          <div>Max PE OI: <span className="font-medium">{maxOi?.nifty?.maxPeStrike ?? "-"}</span> ({fmtOi(maxOi?.nifty?.maxPeOi)})</div>
+        </div>
+        <div className="border border-gray-100 rounded-md p-2">
+          <div className="text-gray-400 mb-1">BankNifty — Max OI (nearest expiry)</div>
+          <div>Max CE OI: <span className="font-medium">{maxOi?.bankNifty?.maxCeStrike ?? "-"}</span> ({fmtOi(maxOi?.bankNifty?.maxCeOi)})</div>
+          <div>Max PE OI: <span className="font-medium">{maxOi?.bankNifty?.maxPeStrike ?? "-"}</span> ({fmtOi(maxOi?.bankNifty?.maxPeOi)})</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Daily EMA trend (support/resistance) — separate from intraday signal ──
+function useDailyEma() {
+  const [trend, setTrend] = useState({ NIFTY: null, BANKNIFTY: null });
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all(
+      ["NIFTY", "BANKNIFTY"].map(sym =>
+        fetch(`${PROXY}/daily-ema?symbol=${sym}`).then(r => r.json()).catch(() => null)
+      )
+    ).then(([nifty, banknifty]) => {
+      if (!cancelled) setTrend({ NIFTY: nifty, BANKNIFTY: banknifty });
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  return trend;
+}
+
+function EmaTrendCard({ label, data }) {
+  const fmt = (v) => (v == null ? "-" : Number(v).toFixed(1));
+  return (
+    <div className="border border-gray-100 rounded-md p-2 text-xs">
+      <div className="text-gray-400 mb-1">{label} — LTP {fmt(data?.ltp)}</div>
+      <div>EMA20 (daily): <span className="font-medium">{fmt(data?.ema20)}</span></div>
+      <div>EMA50 (daily): <span className="font-medium">{fmt(data?.ema50)}</span></div>
+      <div>EMA200 (daily): <span className="font-medium">{fmt(data?.ema200)}</span></div>
+    </div>
+  );
+}
+
+// ── Sector Heatmap ─────────────────────────────────────────────────────────
 function heatColor(pctStr) {
   const v = parseFloat(pctStr);
   if (isNaN(v)) return "bg-gray-50 text-gray-400";
@@ -57,7 +163,7 @@ function SectorHeatmap({ rows }) {
   const data = (rows || []).slice(1).filter(r => r[0]);
   if (data.length === 0) return <div className="text-xs text-gray-400">No data</div>;
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+    <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
       {data.map((r, i) => {
         const [name, , , pct] = r;
         return (
@@ -71,26 +177,7 @@ function SectorHeatmap({ rows }) {
   );
 }
 
-function SentimentStrip({ niftyPcr, bnfPcr, usdinrVixRows }) {
-  const vixRow = usdinrVixRows?.[1];
-  const vixChange = vixRow ? parseFloat(vixRow[2]) : null;
-  const vixArrow = vixChange > 0 ? "\u25B2" : vixChange < 0 ? "\u25BC" : "\u2013";
-  const vixColor = vixChange > 0 ? "text-red-600" : vixChange < 0 ? "text-green-600" : "text-gray-500";
-
-  return (
-    <div className="flex gap-6 items-center p-3 border border-gray-200 rounded-lg text-sm flex-wrap">
-      <div><span className="text-gray-400 text-xs">Nifty PCR</span> <span className="font-medium ml-1">{niftyPcr ?? "-"}</span></div>
-      <div><span className="text-gray-400 text-xs">BankNifty PCR</span> <span className="font-medium ml-1">{bnfPcr ?? "-"}</span></div>
-      <div>
-        <span className="text-gray-400 text-xs">India VIX</span>
-        <span className={`font-medium ml-1 ${vixColor}`}>
-          {vixRow?.[1] ?? "-"} {vixArrow} {vixRow?.[2] ?? ""}
-        </span>
-      </div>
-    </div>
-  );
-}
-
+// ── Charts ───────────────────────────────────────────────────────────────
 function FiiNetChart({ rows }) {
   const canvasRef = useRef(null);
   const chartRef  = useRef(null);
@@ -119,16 +206,16 @@ function FiiNetChart({ rows }) {
         responsive: true,
         maintainAspectRatio: false,
         plugins: { legend: { display: false } },
-        scales: { x: { ticks: { font: { size: 10 } } }, y: { ticks: { font: { size: 10 } } } },
+        scales: { x: { ticks: { font: { size: 9 } } }, y: { ticks: { font: { size: 9 } } } },
       },
     });
     return () => chartRef.current?.destroy();
   }, [rows]);
 
-  return <div style={{ position: "relative", height: "200px" }}><canvas ref={canvasRef} /></div>;
+  return <div style={{ position: "relative", height: "160px" }}><canvas ref={canvasRef} /></div>;
 }
 
-function ClientPositionChart({ title, rows }) {
+function ClientPositionChart({ rows }) {
   const canvasRef = useRef(null);
   const chartRef  = useRef(null);
 
@@ -153,40 +240,53 @@ function ClientPositionChart({ title, rows }) {
         indexAxis: "y",
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { position: "bottom", labels: { font: { size: 10 } } } },
-        scales: { x: { ticks: { font: { size: 10 } } }, y: { ticks: { font: { size: 10 } } } },
+        plugins: { legend: { position: "bottom", labels: { font: { size: 9 } } } },
+        scales: { x: { ticks: { font: { size: 9 } } }, y: { ticks: { font: { size: 9 } } } },
       },
     });
     return () => chartRef.current?.destroy();
   }, [rows]);
 
-  return (
-    <div className="p-3 border border-gray-200 rounded-lg">
-      <div className="text-sm font-medium text-gray-700 mb-2">{title}</div>
-      <div style={{ position: "relative", height: "180px" }}><canvas ref={canvasRef} /></div>
-    </div>
-  );
+  return <div style={{ position: "relative", height: "140px" }}><canvas ref={canvasRef} /></div>;
 }
 
 const MOVER_COLS  = [0, 1, 3];
 const WEEK52_COLS = [0, 1, 3];
+// Participant table columns as fetched: ClientType(0), Long(1), Short(2), Net(3) -> drop Net for the compact table
+const PARTICIPANT_TABLE_COLS = [0, 1, 2];
 
 export default function DailyMarketView() {
   const {
-    buildup, fii, fiiStats, dashboard, scanner, sentiment,
+    buildup, fii, fiiStats, dashboard, scanner, sentiment, maxOi,
     loading, errors, lastUpdated, fetchAll,
   } = useMarketViewData();
+
+  const dailyEma = useDailyEma();
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
   return (
-    <div>
+    <div id="dmv-print-area">
+      <style>{`
+        @media print {
+          body * { visibility: hidden; }
+          #dmv-print-area, #dmv-print-area * { visibility: visible; }
+          #dmv-print-area { position: absolute; left: 0; top: 0; width: 100%; }
+          .no-print { display: none !important; }
+        }
+        @page { size: A4; margin: 12mm; }
+      `}</style>
+
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-sm font-medium text-gray-700">Daily Market View</h2>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 no-print">
           {lastUpdated && (
             <span className="text-xs text-gray-400">Updated {lastUpdated.toLocaleTimeString("en-IN")}</span>
           )}
+          <button onClick={() => window.print()}
+            className="text-xs px-3 py-1 border border-gray-300 rounded-md text-gray-600 hover:bg-gray-50">
+            Print (A4)
+          </button>
           <button onClick={fetchAll}
             className="text-xs px-3 py-1 border border-gray-300 rounded-md text-gray-600 hover:bg-gray-50">
             Refresh
@@ -195,7 +295,7 @@ export default function DailyMarketView() {
       </div>
 
       {errors && errors.length > 0 && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600 no-print">
           {errors.map((e, i) => <div key={i}>{'\u26A0'} {e}</div>)}
         </div>
       )}
@@ -203,37 +303,28 @@ export default function DailyMarketView() {
       {loading && !lastUpdated && <div className="text-sm text-gray-400">Loading…</div>}
 
       <Section title="Index Strip">
-        <SimpleTable title="Nifty / BankNifty / Sensex" rows={dashboard.indexStrip} />
+        <IndexStrip indexStripRow={dashboard.indexStrip} usdinrVixRows={dashboard.usdinrVix} />
+      </Section>
+
+      <Section title="Indices">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <SimpleTable title="Broader Indices" rows={dashboard.broaderIndices} />
+          <SimpleTable title="US Markets" rows={dashboard.usMarkets} />
+          <SimpleTable title="Asian Markets" rows={dashboard.asianMarkets} />
+          <SimpleTable title="Advance / Decline" rows={scanner.breadth} />
+        </div>
       </Section>
 
       <Section title="Sentiment">
-        <SentimentStrip
-          niftyPcr={sentiment.niftyPcr}
-          bnfPcr={sentiment.bnfPcr}
-          usdinrVixRows={dashboard.usdinrVix}
-        />
+        <SentimentStrip niftyPcr={sentiment.niftyPcr} bnfPcr={sentiment.bnfPcr} maxOi={maxOi} />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+          <EmaTrendCard label="Nifty" data={dailyEma.NIFTY} />
+          <EmaTrendCard label="BankNifty" data={dailyEma.BANKNIFTY} />
+        </div>
       </Section>
 
       <Section title="Sector Heatmap">
         <SectorHeatmap rows={dashboard.sectorial} />
-      </Section>
-
-      <Section title="Indices">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <SimpleTable title="Broader Indices" rows={dashboard.broaderIndices} />
-          <SimpleTable title="USD/INR + India VIX" rows={dashboard.usdinrVix} />
-        </div>
-      </Section>
-
-      <Section title="Global Markets">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <SimpleTable title="US Markets" rows={dashboard.usMarkets} />
-          <SimpleTable title="Asian Markets" rows={dashboard.asianMarkets} />
-        </div>
-      </Section>
-
-      <Section title="Market Breadth">
-        <SimpleTable title="Advance / Decline" rows={scanner.breadth} />
       </Section>
 
       <Section title="Top Gainers (by market cap)">
@@ -254,26 +345,45 @@ export default function DailyMarketView() {
 
       <Section title="52-Week Range">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <SimpleTable title="Near 52-Week Low" rows={pickCols(scanner.near52Low, WEEK52_COLS)} />
-          <SimpleTable title="Near 52-Week High" rows={pickCols(scanner.near52High, WEEK52_COLS)} />
+          <SimpleTable title="Near 52-Week Low" rows={trimBlanks(pickCols(scanner.near52Low, WEEK52_COLS))} />
+          <SimpleTable title="Near 52-Week High" rows={trimBlanks(pickCols(scanner.near52High, WEEK52_COLS))} />
         </div>
       </Section>
 
       <Section title="FII / DII Snapshot">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          <ClientPositionChart title="Index Futures (Client-wise)" rows={fii.participantPositions} />
-          <ClientPositionChart title="Stock Futures (Client-wise)" rows={fii.stockParticipantPositions} />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+          <div className="p-3 border border-gray-200 rounded-lg">
+            <div className="text-sm font-medium text-gray-700 mb-2">Index Futures (Client-wise)</div>
+            <ClientPositionChart rows={fii.participantPositions} />
+            <div className="mt-2">
+              <SimpleTable rows={pickCols(fii.participantPositions, PARTICIPANT_TABLE_COLS)} />
+            </div>
+          </div>
+          <div className="p-3 border border-gray-200 rounded-lg">
+            <div className="text-sm font-medium text-gray-700 mb-2">Stock Futures (Client-wise)</div>
+            <ClientPositionChart rows={fii.stockParticipantPositions} />
+            <div className="mt-2">
+              <SimpleTable rows={pickCols(fii.stockParticipantPositions, PARTICIPANT_TABLE_COLS)} />
+            </div>
+          </div>
+          <div className="p-3 border border-gray-200 rounded-lg">
+            <div className="text-sm font-medium text-gray-700 mb-2">Historical Net FII Positions</div>
+            <FiiNetChart rows={fii.historicalNet} />
+            <div className="mt-2">
+              <SimpleTable rows={fii.historicalNet} />
+            </div>
+          </div>
+          <div className="p-3 border border-gray-200 rounded-lg">
+            <div className="text-sm font-medium text-gray-700 mb-2">FII Statistics</div>
+            <SimpleTable rows={fiiStats} />
+            <div className="text-sm font-medium text-gray-700 mt-3 mb-2">Nifty/BankNifty Net</div>
+            <SimpleTable rows={fii.niftyBankNet} />
+          </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          <SimpleTable title="FII — Index Futures (net)" rows={fii.indexFutures} />
-          <SimpleTable title="FII — Stock Futures (net)" rows={fii.stockFutures} />
-        </div>
-        <div className="mb-4">
-          <SimpleTable title="FII Derivatives Statistics" rows={fiiStats} />
-        </div>
-        <div className="p-3 border border-gray-200 rounded-lg">
-          <div className="text-sm font-medium text-gray-700 mb-2">Historical Net FII Positions</div>
-          <FiiNetChart rows={fii.historicalNet} />
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <SimpleTable title="Index Futures Position" rows={fii.indexFutures} />
+          <SimpleTable title="Stock Futures Position" rows={fii.stockFutures} />
         </div>
       </Section>
 

@@ -1,12 +1,12 @@
 import { useState, useCallback } from "react";
 import { fetchRange, parseRow } from "../utils/gsheets";
-import { MARKET_VIEW_SHEET_ID, MARKET_VIEW_RANGES, SHEETS, PCR_COLS } from "../config/sheets";
+import { MARKET_VIEW_SHEET_ID, MARKET_VIEW_RANGES, SHEETS, PCR_COLS, RAW_COLS } from "../config/sheets";
 
 const opts         = { sheetId: MARKET_VIEW_SHEET_ID };
 const optsNoHeader = { sheetId: MARKET_VIEW_SHEET_ID, skipHeader: false };
 
-// Runs a section's fetches; on failure, logs the error into `errors` but doesn't
-// throw — so one bad range can't blank out sections that succeeded.
+const NF_EXPIRY_COL = 17;
+
 async function safeSection(errors, label, fn) {
   try {
     return await fn();
@@ -16,12 +16,37 @@ async function safeSection(errors, label, fn) {
   }
 }
 
+// Computes Max CE OI / Max PE OI strike for the nearest expiry, reusing the
+// same raw-sheet layout as useSheetData.js.
+async function computeMaxOi(sheetCfg, isNiftyFlag) {
+  const range = isNiftyFlag ? "A:R" : "A:Q";
+  let rows = await fetchRange(sheetCfg.raw, range).then(rs => rs.filter(r => r[7] && r[0]));
+
+  if (isNiftyFlag) {
+    const expiries = [...new Set(rows.map(r => r[NF_EXPIRY_COL]).filter(Boolean))];
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const future = expiries.filter(e => new Date(e) >= today).sort();
+    const nearest = future[0] ?? expiries.sort().slice(-1)[0];
+    if (nearest) rows = rows.filter(r => r[NF_EXPIRY_COL] === nearest);
+  }
+
+  const parsed = rows.map(r => parseRow(r, RAW_COLS));
+  const byStrike = {};
+  parsed.forEach(r => { if (r.strike) byStrike[r.strike] = r; });
+  const strikes = Object.values(byStrike);
+  if (!strikes.length) return null;
+
+  const maxCe = strikes.reduce((b, r) => (r.ce_oi ?? 0) > (b.ce_oi ?? 0) ? r : b, strikes[0]);
+  const maxPe = strikes.reduce((b, r) => (r.pe_oi ?? 0) > (b.pe_oi ?? 0) ? r : b, strikes[0]);
+  return { maxCeStrike: maxCe.strike, maxCeOi: maxCe.ce_oi, maxPeStrike: maxPe.strike, maxPeOi: maxPe.pe_oi };
+}
+
 export function useMarketViewData() {
   const [buildup,    setBuildup]    = useState({ longBuildup: [], shortBuildup: [], shortCovering: [], longUnwinding: [] });
   const [fii,         setFii]        = useState({
     indexFutures: [], stockFutures: [],
     participantPositions: [], stockParticipantPositions: [],
-    historicalNet: [],
+    historicalNet: [], niftyBankNet: [],
   });
   const [fiiStats,    setFiiStats]   = useState([]);
   const [dashboard,   setDashboard]  = useState({ indexStrip: [], broaderIndices: [], sectorial: [], usMarkets: [], asianMarkets: [], usdinrVix: [] });
@@ -31,6 +56,7 @@ export function useMarketViewData() {
     near52Low: [], near52High: [], breadth: [],
   });
   const [sentiment,   setSentiment]  = useState({ niftyPcr: null, bnfPcr: null });
+  const [maxOi,       setMaxOi]      = useState({ nifty: null, bankNifty: null });
   const [loading,     setLoading]    = useState(false);
   const [errors,      setErrors]     = useState([]);
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -38,7 +64,7 @@ export function useMarketViewData() {
   const fetchAll = useCallback(async () => {
     setLoading(true);
     const errs = [];
-    const { buildup: b, fii: f, fiiStats: fs, dashboard: d, scanner: s } = MARKET_VIEW_RANGES;
+    const { buildup: b, fii: f, fiiStats: fs, fiiNiftyBankNet: nb, dashboard: d, scanner: s } = MARKET_VIEW_RANGES;
 
     const buildupResult = await safeSection(errs, "Buildup", async () => {
       const [longBuildup, shortBuildup, shortCovering, longUnwinding] = await Promise.all([
@@ -52,14 +78,15 @@ export function useMarketViewData() {
     if (buildupResult) setBuildup(buildupResult);
 
     const fiiResult = await safeSection(errs, "FII Data", async () => {
-      const [indexFutures, stockFutures, participantPositions, stockParticipantPositions, historicalNet] = await Promise.all([
+      const [indexFutures, stockFutures, participantPositions, stockParticipantPositions, historicalNet, niftyBankNet] = await Promise.all([
         fetchRange(f.tab, f.indexFutures, optsNoHeader),
         fetchRange(f.tab, f.stockFutures, optsNoHeader),
         fetchRange(f.tab, f.participantPositions, optsNoHeader),
         fetchRange(f.tab, f.stockParticipantPositions, optsNoHeader),
         fetchRange(f.tab, f.historicalNet, optsNoHeader),
+        fetchRange(nb.tab, nb.range, optsNoHeader),
       ]);
-      return { indexFutures, stockFutures, participantPositions, stockParticipantPositions, historicalNet };
+      return { indexFutures, stockFutures, participantPositions, stockParticipantPositions, historicalNet, niftyBankNet };
     });
     if (fiiResult) setFii(fiiResult);
 
@@ -116,10 +143,19 @@ export function useMarketViewData() {
     });
     if (sentimentResult) setSentiment(sentimentResult);
 
+    const maxOiResult = await safeSection(errs, "Max OI", async () => {
+      const [nifty, bankNifty] = await Promise.all([
+        computeMaxOi(SHEETS.NIFTY, true),
+        computeMaxOi(SHEETS.BANKNIFTY, false),
+      ]);
+      return { nifty, bankNifty };
+    });
+    if (maxOiResult) setMaxOi(maxOiResult);
+
     setErrors(errs);
     setLastUpdated(new Date());
     setLoading(false);
   }, []);
 
-  return { buildup, fii, fiiStats, dashboard, scanner, sentiment, loading, errors, lastUpdated, fetchAll };
+  return { buildup, fii, fiiStats, dashboard, scanner, sentiment, maxOi, loading, errors, lastUpdated, fetchAll };
 }
