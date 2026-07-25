@@ -12,10 +12,11 @@ import GreeksPanel       from "../components/GreeksPanel";
 import StrategyBuilder   from "../components/StrategyBuilder";
 import IntradayScreener  from "../components/IntradayScreener";
 import StockRanker from "../components/StockRanker";
+import DailyMarketView from "../components/DailyMarketView";
 
 const PROXY = import.meta.env.VITE_PROXY_URL ?? "http://localhost:5000";
 
-const TABS = ["Option Chain", "Straddle / Strangle", "OI Chart", "Greeks", "Strategy", "Intraday Screener", "Swing Screener", "Stock Ranker"];
+const TABS = ["Daily Market View", "Option Chain", "Straddle / Strangle", "OI Chart", "Greeks", "Strategy", "Intraday Screener", "Swing Screener", "Stock Ranker"];
 
 // ALL NSE F&O expiries (index + stock) are now last Tuesday of month (since Sep 2025)
 // Nifty additionally has weekly Tuesday expiries
@@ -226,6 +227,7 @@ export default function Dashboard() {
         </div>
 
         <div className="bg-white rounded-xl border border-gray-200 p-4">
+          const [activeTab, setActiveTab] = useState("Daily Market View");
           {activeTab === "Option Chain" && (
             <OptionChain
               chain={chain} atmStrike={atm}

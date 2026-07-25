@@ -34,3 +34,49 @@ export const SCREENER_COLS  = {
   volume:11, avg_volume:12, vol_ratio:13,
   rs:14, momentum:15, reversal:16, atr:17, atr_consumed:18,
 };
+
+// ── Daily Market View — separate daily-processed workbook ────────────────────
+export const MARKET_VIEW_SHEET_ID = "1t_AAtFwWPnqeNoVwDFbV8rtCIEXwQ8e3kLFHoRSlre0";
+
+export const MARKET_VIEW_RANGES = {
+  buildup: {
+    tab: "Buildup",
+    longBuildup:   "A53:B58",
+    shortBuildup:  "F53:G58",
+    shortCovering: "K53:L58",
+    longUnwinding: "P53:Q58",
+  },
+  fii: {
+    tab: "FIIData",
+    indexFutures:              "B21:D23",
+    stockFutures:               "G21:I23",
+    participantPositions:       "B2:E6",
+    stockParticipantPositions:  "G2:J6",
+    historicalNet:              "L1:O8",
+  },
+  fiiStats: {
+    tab: "FII Stat",
+    range: "W2:X6",
+  },
+  dashboard: {
+    tab: "Dashboard",
+    indexStrip:     "C2:P2",
+    broaderIndices: "C6:F10",
+    sectorial:      "H6:K16",
+    usMarkets:      "M6:P9",
+    asianMarkets:   "M12:P16",
+    usdinrVix:      "C14:E15",
+  },
+  scanner: {
+    tab: "scanner",
+    gainersLargecap: "B110:F120",
+    gainersMidcap:   "G110:K120",
+    gainersSmallcap: "L110:P120",
+    loosersLargecap: "B125:F135",
+    loosersMidcap:   "G125:K135",
+    loosersSmallcap: "L125:P135",
+    near52Low:       "B88:E90",
+    near52High:      "G88:J90",
+    breadth:         "B140:C144",
+  },
+};
