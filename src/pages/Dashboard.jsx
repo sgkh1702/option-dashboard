@@ -227,7 +227,7 @@ export default function Dashboard() {
         </div>
 
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          const [activeTab, setActiveTab] = useState("Daily Market View");
+          {activeTab === "Daily Market View" && <DailyMarketView />}
           {activeTab === "Option Chain" && (
             <OptionChain
               chain={chain} atmStrike={atm}
