@@ -45,7 +45,7 @@ const INDEX_KEYS = new Set(["BANKNIFTY", "NIFTY", "FINNIFTY", "MIDCPNIFTY", "NIF
 
 export default function Dashboard() {
   const [indexKey,       setIndexKey]       = useState(ENABLED_INDICES[0]?.key ?? "BANKNIFTY");
-  const [activeTab,      setActiveTab]      = useState("Option Chain");
+  const [activeTab,      setActiveTab]      = useState("Daily Market View");
   const [selectedStrike, setSelectedStrike] = useState(null);
 
   const indexConfig = INDICES[indexKey];
