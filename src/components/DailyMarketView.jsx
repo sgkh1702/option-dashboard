@@ -174,7 +174,7 @@ const WEEK52_COLS = [0, 1, 3];
 export default function DailyMarketView() {
   const {
     buildup, fii, fiiStats, dashboard, scanner, sentiment,
-    loading, error, lastUpdated, fetchAll,
+    loading, errors, lastUpdated, fetchAll,
   } = useMarketViewData();
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
@@ -194,9 +194,9 @@ export default function DailyMarketView() {
         </div>
       </div>
 
-      {error && (
+      {errors && errors.length > 0 && (
         <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
-          {'\u26A0'} {error}
+          {errors.map((e, i) => <div key={i}>{'\u26A0'} {e}</div>)}
         </div>
       )}
 
