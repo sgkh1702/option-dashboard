@@ -1,36 +1,24 @@
 import { useState, useCallback } from "react";
-import { fetchRange, parseRow } from "../utils/gsheets";
+import { fetchRanges, parseRow } from "../utils/gsheets";
 import { MARKET_VIEW_SHEET_ID, MARKET_VIEW_RANGES, SHEETS, RAW_COLS } from "../config/sheets";
-
-const opts         = { sheetId: MARKET_VIEW_SHEET_ID };
-const optsNoHeader = { sheetId: MARKET_VIEW_SHEET_ID, skipHeader: false };
 
 const NF_EXPIRY_COL = 17;
 
-async function safeSection(errors, label, fn) {
-  try {
-    return await fn();
-  } catch (e) {
-    errors.push(`${label}: ${e.message}`);
-    return null;
-  }
-}
-
-// Computes Max CE OI / Max PE OI strike for the nearest expiry, reusing the
-// same raw-sheet layout as useSheetData.js.
-async function computeMaxOi(sheetCfg, isNiftyFlag) {
-  const range = isNiftyFlag ? "A:R" : "A:Q";
-  let rows = await fetchRange(sheetCfg.raw, range).then(rs => rs.filter(r => r[7] && r[0]));
+// Computes Max CE OI / Max PE OI strike for the nearest expiry from already-
+// fetched raw rows (NFData / BNFData), reusing the same layout useSheetData.js
+// parses elsewhere. `rows` here already has the header row stripped.
+function computeMaxOiFromRows(rows, isNiftyFlag) {
+  let filtered = (rows || []).filter(r => r[7] && r[0]);
 
   if (isNiftyFlag) {
-    const expiries = [...new Set(rows.map(r => r[NF_EXPIRY_COL]).filter(Boolean))];
+    const expiries = [...new Set(filtered.map(r => r[NF_EXPIRY_COL]).filter(Boolean))];
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const future = expiries.filter(e => new Date(e) >= today).sort();
     const nearest = future[0] ?? expiries.sort().slice(-1)[0];
-    if (nearest) rows = rows.filter(r => r[NF_EXPIRY_COL] === nearest);
+    if (nearest) filtered = filtered.filter(r => r[NF_EXPIRY_COL] === nearest);
   }
 
-  const parsed = rows.map(r => parseRow(r, RAW_COLS));
+  const parsed = filtered.map(r => parseRow(r, RAW_COLS));
   const byStrike = {};
   parsed.forEach(r => { if (r.strike) byStrike[r.strike] = r; });
   const strikes = Object.values(byStrike);
@@ -66,92 +54,103 @@ export function useMarketViewData() {
     const errs = [];
     const { buildup: b, fii: f, fiiStats: fs, fiiNiftyBankNet: nb, dashboard: d, scanner: s } = MARKET_VIEW_RANGES;
 
-    const buildupResult = await safeSection(errs, "Buildup", async () => {
-      const [longBuildup, shortBuildup, shortCovering, longUnwinding] = await Promise.all([
-        fetchRange(b.tab, b.longBuildup, opts),
-        fetchRange(b.tab, b.shortBuildup, opts),
-        fetchRange(b.tab, b.shortCovering, opts),
-        fetchRange(b.tab, b.longUnwinding, opts),
-      ]);
-      return { longBuildup, shortBuildup, shortCovering, longUnwinding };
-    });
-    if (buildupResult) setBuildup(buildupResult);
+    // ── Everything on the daily-processed workbook, in ONE batched request ──
+    // (previously ~26 separate fetchRange() calls — this alone was blowing
+    // through the Sheets API's per-minute read-request quota)
+    const marketViewSpecs = [
+      { sheetName: b.tab, range: b.longBuildup,   skipHeader: true },
+      { sheetName: b.tab, range: b.shortBuildup,  skipHeader: true },
+      { sheetName: b.tab, range: b.shortCovering, skipHeader: true },
+      { sheetName: b.tab, range: b.longUnwinding, skipHeader: true },
+      { sheetName: f.tab, range: f.indexFutures },
+      { sheetName: f.tab, range: f.stockFutures },
+      { sheetName: f.tab, range: f.participantPositions },
+      { sheetName: f.tab, range: f.stockParticipantPositions },
+      { sheetName: f.tab, range: f.historicalNet },
+      { sheetName: nb.tab, range: nb.range },
+      { sheetName: fs.tab, range: fs.range },
+      { sheetName: d.tab, range: d.indexStrip },
+      { sheetName: d.tab, range: d.broaderIndices },
+      { sheetName: d.tab, range: d.sectorial },
+      { sheetName: d.tab, range: d.usMarkets },
+      { sheetName: d.tab, range: d.asianMarkets },
+      { sheetName: d.tab, range: d.usdinrVix },
+      { sheetName: s.tab, range: s.gainersLargecap },
+      { sheetName: s.tab, range: s.gainersMidcap },
+      { sheetName: s.tab, range: s.gainersSmallcap },
+      { sheetName: s.tab, range: s.loosersLargecap },
+      { sheetName: s.tab, range: s.loosersMidcap },
+      { sheetName: s.tab, range: s.loosersSmallcap },
+      { sheetName: s.tab, range: s.near52Low },
+      { sheetName: s.tab, range: s.near52High },
+      { sheetName: s.tab, range: s.breadth },
+    ];
 
-    const fiiResult = await safeSection(errs, "FII Data", async () => {
-      const [indexFutures, stockFutures, participantPositions, stockParticipantPositions, historicalNet, niftyBankNet] = await Promise.all([
-        fetchRange(f.tab, f.indexFutures, optsNoHeader),
-        fetchRange(f.tab, f.stockFutures, optsNoHeader),
-        fetchRange(f.tab, f.participantPositions, optsNoHeader),
-        fetchRange(f.tab, f.stockParticipantPositions, optsNoHeader),
-        fetchRange(f.tab, f.historicalNet, optsNoHeader),
-        fetchRange(nb.tab, nb.range, optsNoHeader),
-      ]);
-      return { indexFutures, stockFutures, participantPositions, stockParticipantPositions, historicalNet, niftyBankNet };
-    });
-    if (fiiResult) setFii(fiiResult);
+    let mv = new Array(marketViewSpecs.length).fill([]);
+    try {
+      mv = await fetchRanges(marketViewSpecs, { sheetId: MARKET_VIEW_SHEET_ID });
+    } catch (e) {
+      errs.push(`Market View sheet: ${e.message}`);
+    }
 
-    const fiiStatsResult = await safeSection(errs, "FII Stat", async () =>
-      fetchRange(fs.tab, fs.range, optsNoHeader)
-    );
-    if (fiiStatsResult) setFiiStats(fiiStatsResult);
-
-    const dashboardResult = await safeSection(errs, "Dashboard", async () => {
-      const [indexStrip, broaderIndices, sectorial, usMarkets, asianMarkets, usdinrVix] = await Promise.all([
-        fetchRange(d.tab, d.indexStrip, optsNoHeader),
-        fetchRange(d.tab, d.broaderIndices, optsNoHeader),
-        fetchRange(d.tab, d.sectorial, optsNoHeader),
-        fetchRange(d.tab, d.usMarkets, optsNoHeader),
-        fetchRange(d.tab, d.asianMarkets, optsNoHeader),
-        fetchRange(d.tab, d.usdinrVix, optsNoHeader),
-      ]);
-      return { indexStrip, broaderIndices, sectorial, usMarkets, asianMarkets, usdinrVix };
+    let i = 0;
+    setBuildup({
+      longBuildup:   mv[i++],
+      shortBuildup:  mv[i++],
+      shortCovering: mv[i++],
+      longUnwinding: mv[i++],
     });
-    if (dashboardResult) setDashboard(dashboardResult);
-
-    const scannerResult = await safeSection(errs, "Scanner", async () => {
-      const [
-        gainersLargecap, gainersMidcap, gainersSmallcap,
-        loosersLargecap, loosersMidcap, loosersSmallcap,
-        near52Low, near52High, breadth,
-      ] = await Promise.all([
-        fetchRange(s.tab, s.gainersLargecap, optsNoHeader),
-        fetchRange(s.tab, s.gainersMidcap, optsNoHeader),
-        fetchRange(s.tab, s.gainersSmallcap, optsNoHeader),
-        fetchRange(s.tab, s.loosersLargecap, optsNoHeader),
-        fetchRange(s.tab, s.loosersMidcap, optsNoHeader),
-        fetchRange(s.tab, s.loosersSmallcap, optsNoHeader),
-        fetchRange(s.tab, s.near52Low, optsNoHeader),
-        fetchRange(s.tab, s.near52High, optsNoHeader),
-        fetchRange(s.tab, s.breadth, optsNoHeader),
-      ]);
-      return {
-        gainersLargecap, gainersMidcap, gainersSmallcap,
-        loosersLargecap, loosersMidcap, loosersSmallcap,
-        near52Low, near52High, breadth,
-      };
+    setFii({
+      indexFutures:              mv[i++],
+      stockFutures:               mv[i++],
+      participantPositions:       mv[i++],
+      stockParticipantPositions:  mv[i++],
+      historicalNet:              mv[i++],
+      niftyBankNet:               mv[i++],
     });
-    if (scannerResult) setScanner(scannerResult);
-
-    // PCR: single cell O20 on Nifty2 / Banknifty2 tabs (original sheet, default sheetId)
-    const sentimentResult = await safeSection(errs, "Sentiment (PCR)", async () => {
-      const [niftyRows, bnfRows] = await Promise.all([
-        fetchRange(SHEETS.NIFTY.dashboard, "O20:O20", { skipHeader: false }),
-        fetchRange(SHEETS.BANKNIFTY.dashboard, "O20:O20", { skipHeader: false }),
-      ]);
-      const niftyPcr = niftyRows?.[0]?.[0] ?? null;
-      const bnfPcr   = bnfRows?.[0]?.[0] ?? null;
-      return { niftyPcr, bnfPcr };
+    setFiiStats(mv[i++]);
+    setDashboard({
+      indexStrip:     mv[i++],
+      broaderIndices: mv[i++],
+      sectorial:      mv[i++],
+      usMarkets:      mv[i++],
+      asianMarkets:   mv[i++],
+      usdinrVix:      mv[i++],
     });
-    if (sentimentResult) setSentiment(sentimentResult);
-
-    const maxOiResult = await safeSection(errs, "Max OI", async () => {
-      const [nifty, bankNifty] = await Promise.all([
-        computeMaxOi(SHEETS.NIFTY, true),
-        computeMaxOi(SHEETS.BANKNIFTY, false),
-      ]);
-      return { nifty, bankNifty };
+    setScanner({
+      gainersLargecap: mv[i++], gainersMidcap: mv[i++], gainersSmallcap: mv[i++],
+      loosersLargecap: mv[i++], loosersMidcap: mv[i++], loosersSmallcap: mv[i++],
+      near52Low: mv[i++], near52High: mv[i++], breadth: mv[i++],
     });
-    if (maxOiResult) setMaxOi(maxOiResult);
+
+    // ── PCR cells + raw option-chain sheets (default sheetId) — ONE more batched request ──
+    const rawSpecs = [
+      { sheetName: SHEETS.NIFTY.dashboard,     range: "O20:O20" },
+      { sheetName: SHEETS.BANKNIFTY.dashboard, range: "O20:O20" },
+      { sheetName: SHEETS.NIFTY.raw,           range: "A:R", skipHeader: true },
+      { sheetName: SHEETS.BANKNIFTY.raw,       range: "A:Q", skipHeader: true },
+    ];
+
+    let raw = new Array(rawSpecs.length).fill([]);
+    try {
+      raw = await fetchRanges(rawSpecs);
+    } catch (e) {
+      errs.push(`Sentiment / Max OI: ${e.message}`);
+    }
+
+    setSentiment({
+      niftyPcr: raw[0]?.[0]?.[0] ?? null,
+      bnfPcr:   raw[1]?.[0]?.[0] ?? null,
+    });
+
+    try {
+      setMaxOi({
+        nifty:     computeMaxOiFromRows(raw[2], true),
+        bankNifty: computeMaxOiFromRows(raw[3], false),
+      });
+    } catch (e) {
+      errs.push(`Max OI: ${e.message}`);
+    }
 
     setErrors(errs);
     setLastUpdated(new Date());

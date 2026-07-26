@@ -5,6 +5,11 @@ import { useMarketViewData } from "../hooks/useMarketViewData";
 
 const PROXY = import.meta.env.VITE_PROXY_URL ?? "http://localhost:5000";
 
+// ── Accent palette (mirrors the mf-analyser app's card styling) ───────────
+const ACCENT_BORDER = ["border-t-blue-600", "border-t-violet-600", "border-t-emerald-600", "border-t-orange-600"];
+const ACCENT_DOT     = ["bg-blue-600", "bg-violet-600", "bg-emerald-600", "bg-orange-600"];
+const ACCENT_TEXT    = ["text-blue-600", "text-violet-600", "text-emerald-600", "text-orange-600"];
+
 function pickCols(rows, indices) {
   if (!rows) return rows;
   return rows.map(row => indices.map(i => row[i]));
@@ -18,19 +23,84 @@ function trimBlanks(rows) {
   return rows.filter((r, i) => i === 0 || (r[0] && String(r[0]).trim() !== ""));
 }
 
+// ── Number formatting helpers ──────────────────────────────────────────────
+// Generic cells (OI, volumes, buildup %, FII position counts, etc.): only
+// normalize values that already look decimal to 1 decimal place; whole
+// numbers (esp. large OI/volume counts) are left as whole numbers, keeping
+// their comma grouping if the sheet already formatted them that way.
+function smartFmt(cell) {
+  if (cell === undefined || cell === null || cell === "") return cell;
+  const s = String(cell).trim();
+  const cleaned = s.replace(/,/g, "");
+  if (!/^-?\d+(\.\d+)?$/.test(cleaned)) return cell; // dates, labels, symbols — leave untouched
+  const num = parseFloat(cleaned);
+  if (cleaned.includes(".")) return num.toFixed(1);
+  return s.includes(",") ? s : num.toLocaleString("en-IN");
+}
+
+// Price/percentage-type cells (LTP, CMP, Change, %Change, PCR, EMA): always
+// force a uniform 1 decimal place, since these are inherently decimal fields.
+function fmtPrice(v) {
+  if (v === undefined || v === null || v === "") return "-";
+  const cleaned = String(v).replace(/[,%₹\s]/g, "");
+  const num = parseFloat(cleaned);
+  if (isNaN(num)) return v;
+  return num.toFixed(1);
+}
+
+function fmtOi(v) {
+  if (v === undefined || v === null || v === "") return "-";
+  const cleaned = String(v).replace(/[,%₹\s]/g, "");
+  const num = parseFloat(cleaned);
+  if (isNaN(num)) return v;
+  return Math.round(num).toLocaleString("en-IN");
+}
+
+function signOf(v) {
+  const n = parseFloat(String(v).replace(/[,%₹\s]/g, ""));
+  if (isNaN(n)) return 0;
+  return n;
+}
+
+function signClass(v) {
+  const n = signOf(v);
+  if (n > 0) return "text-green-700";
+  if (n < 0) return "text-red-700";
+  return "text-gray-600";
+}
+
+// ── Card shell ──────────────────────────────────────────────────────────
+function Card({ children, className = "" }) {
+  return (
+    <div className={`bg-white rounded-xl shadow-sm border border-gray-200 p-3 print:p-1 ${className}`}>
+      {children}
+    </div>
+  );
+}
+
+function CardTitle({ children }) {
+  return <div className="text-sm print:text-[8px] font-medium text-gray-700 mb-2 print:mb-1">{children}</div>;
+}
+
+function NoData() {
+  return <div className="text-xs text-gray-400">No data</div>;
+}
+
+// Generic table for data that doesn't need per-cell sign coloring (buildup,
+// FII position tables, 52-week range, breadth, etc.)
 function SimpleTable({ title, rows }) {
   return (
-    <div className="p-3 print:p-1 border border-gray-200 rounded-lg overflow-x-auto">
-      {title && <div className="text-sm print:text-[8px] font-medium text-gray-700 mb-2 print:mb-1">{title}</div>}
+    <Card className="overflow-x-auto">
+      {title && <CardTitle>{title}</CardTitle>}
       {(!rows || rows.length === 0)
-        ? <div className="text-xs text-gray-400">No data</div>
+        ? <NoData />
         : (
           <table className="text-xs print:text-[7px] w-full">
             <tbody>
               {rows.map((row, i) => (
                 <tr key={i} className="border-b border-gray-100 last:border-0">
                   {row.map((cell, j) => (
-                    <td key={j} className="py-1 print:py-0 pr-3 print:pr-1 text-gray-600 whitespace-nowrap">{cell}</td>
+                    <td key={j} className="py-1 print:py-0 pr-3 print:pr-1 text-gray-600 whitespace-nowrap">{smartFmt(cell)}</td>
                   ))}
                 </tr>
               ))}
@@ -38,14 +108,90 @@ function SimpleTable({ title, rows }) {
           </table>
         )
       }
-    </div>
+    </Card>
   );
 }
 
-function Section({ title, children }) {
+// Indices table (Broader/US/Asian Markets): first row is the header, and
+// LTP/Change/%Change are colored green/red by the sign of Change.
+function IndicesTable({ title, rows }) {
+  if (!rows || rows.length === 0) {
+    return <Card>{title && <CardTitle>{title}</CardTitle>}<NoData /></Card>;
+  }
+  const [header, ...data] = rows;
+  return (
+    <Card className="overflow-x-auto">
+      {title && <CardTitle>{title}</CardTitle>}
+      <table className="text-xs print:text-[7px] w-full">
+        <thead>
+          <tr className="border-b border-gray-200">
+            {header.map((h, j) => (
+              <th key={j} className="py-1 print:py-0 pr-3 print:pr-1 text-left font-semibold text-gray-700 whitespace-nowrap">{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {data.map((row, i) => {
+            const [name, ltp, chg, pct] = row;
+            const cls = signClass(chg);
+            return (
+              <tr key={i} className="border-b border-gray-100 last:border-0">
+                <td className="py-1 print:py-0 pr-3 print:pr-1 text-gray-600 whitespace-nowrap">{name}</td>
+                <td className={`py-1 print:py-0 pr-3 print:pr-1 whitespace-nowrap font-medium ${cls}`}>{fmtPrice(ltp)}</td>
+                <td className={`py-1 print:py-0 pr-3 print:pr-1 whitespace-nowrap ${cls}`}>{fmtPrice(chg)}</td>
+                <td className={`py-1 print:py-0 pr-3 print:pr-1 whitespace-nowrap ${cls}`}>{fmtPrice(pct)}%</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </Card>
+  );
+}
+
+// Gainers/losers table: Symbol, CMP, %Change — CMP/%Change colored by sign
+// of %Change.
+function MoversTable({ title, rows }) {
+  if (!rows || rows.length === 0) {
+    return <Card>{title && <CardTitle>{title}</CardTitle>}<NoData /></Card>;
+  }
+  const [header, ...data] = rows;
+  return (
+    <Card className="overflow-x-auto">
+      {title && <CardTitle>{title}</CardTitle>}
+      <table className="text-xs print:text-[7px] w-full">
+        <thead>
+          <tr className="border-b border-gray-200">
+            {header.map((h, j) => (
+              <th key={j} className="py-1 print:py-0 pr-3 print:pr-1 text-left font-semibold text-gray-700 whitespace-nowrap">{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {data.map((row, i) => {
+            const [sym, cmp, pct] = row;
+            const cls = signClass(pct);
+            return (
+              <tr key={i} className="border-b border-gray-100 last:border-0">
+                <td className="py-1 print:py-0 pr-3 print:pr-1 text-gray-600 whitespace-nowrap">{sym}</td>
+                <td className={`py-1 print:py-0 pr-3 print:pr-1 whitespace-nowrap font-medium ${cls}`}>{fmtPrice(cmp)}</td>
+                <td className={`py-1 print:py-0 pr-3 print:pr-1 whitespace-nowrap ${cls}`}>{fmtPrice(pct)}%</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </Card>
+  );
+}
+
+function Section({ title, accent = 0, children }) {
   return (
     <div className="mb-6 print:mb-2">
-      <div className="text-xs print:text-[8px] uppercase tracking-wide text-gray-400 mb-2 print:mb-1">{title}</div>
+      <div className="flex items-center gap-2 mb-2 print:mb-1">
+        <span className={`w-2 h-2 rounded-full ${ACCENT_DOT[accent % ACCENT_DOT.length]}`} />
+        <span className="text-xs print:text-[8px] uppercase tracking-wide text-gray-500 font-semibold">{title}</span>
+      </div>
       {children}
     </div>
   );
@@ -53,7 +199,7 @@ function Section({ title, children }) {
 
 // ── Index Strip ────────────────────────────────────────────────────────────
 function IndexStripItem({ label, value, change }) {
-  const v = parseFloat(change);
+  const v = signOf(change);
   const positive = v > 0;
   const negative = v < 0;
   const cardClass = positive
@@ -67,14 +213,15 @@ function IndexStripItem({ label, value, change }) {
   return (
     <div className={`flex items-center gap-2 px-3 py-2 print:px-1 print:py-0.5 rounded-lg border ${cardClass}`}>
       <span className="text-xs print:text-[7px] text-gray-500">{label}</span>
-      <span className="text-sm print:text-[8px] font-bold text-gray-800">{value}</span>
+      <span className="text-sm print:text-[8px] font-bold text-gray-800">{fmtPrice(value)}</span>
       <span className={`text-xs print:text-[7px] font-semibold ${txtClass}`}>
-        {arrow} {positive ? "+" : ""}{change}
+        {arrow} {positive ? "+" : ""}{fmtPrice(change)}
       </span>
     </div>
   );
 }
 
+// Order: Nifty, BankNifty, Sensex spot first, then IndiaVIX / USDINR.
 function IndexStrip({ indexStripRow, usdinrVixRows }) {
   const items = [];
   const r = indexStripRow || [];
@@ -87,7 +234,7 @@ function IndexStrip({ indexStripRow, usdinrVixRows }) {
   if (vixRow)    items.push({ label: "IndiaVIX", value: vixRow[1],    change: vixRow[2]    });
   if (usdinrRow) items.push({ label: "USDINR",   value: usdinrRow[1], change: usdinrRow[2] });
 
-  if (items.length === 0) return <div className="text-xs text-gray-400">No data</div>;
+  if (items.length === 0) return <NoData />;
   return (
     <div className="flex flex-wrap gap-3 print:gap-1">
       {items.map((it, i) => <IndexStripItem key={i} {...it} />)}
@@ -114,26 +261,26 @@ function useDailyEma() {
   return trend;
 }
 
-function IndexSentimentPanel({ label, pcr, maxOi, ema }) {
-  const fmtOi  = (v) => (v == null ? "-" : Number(v).toLocaleString("en-IN"));
-  const fmtEma = (v) => (v == null ? "-" : Number(v).toFixed(1));
+function IndexSentimentPanel({ label, pcr, maxOi, ema, accent = 0 }) {
   return (
-    <div className="border border-gray-200 rounded-lg p-3 print:p-1 text-sm print:text-[8px]">
-      <div className="font-semibold text-gray-700 mb-2 print:mb-1">{label} — PCR: {pcr ?? "-"}</div>
-      <div className="text-xs print:text-[7px] space-y-1 print:space-y-0">
+    <Card className={`border-t-4 ${ACCENT_BORDER[accent % ACCENT_BORDER.length]} text-sm print:text-[8px]`}>
+      <div className={`font-semibold mb-2 print:mb-1 ${ACCENT_TEXT[accent % ACCENT_TEXT.length]}`}>
+        {label} — PCR: {fmtPrice(pcr)}
+      </div>
+      <div className="text-xs print:text-[7px] space-y-1 print:space-y-0 text-gray-700">
         <div>Max CE OI: <span className="font-medium">{maxOi?.maxCeStrike ?? "-"}</span> ({fmtOi(maxOi?.maxCeOi)})</div>
         <div>Max PE OI: <span className="font-medium">{maxOi?.maxPeStrike ?? "-"}</span> ({fmtOi(maxOi?.maxPeOi)})</div>
-        <div>EMA20 (daily): <span className="font-medium">{fmtEma(ema?.ema20)}</span></div>
-        <div>EMA50 (daily): <span className="font-medium">{fmtEma(ema?.ema50)}</span></div>
-        <div>EMA200 (daily): <span className="font-medium">{fmtEma(ema?.ema200)}</span></div>
+        <div>EMA20 (daily): <span className="font-medium">{fmtPrice(ema?.ema20)}</span></div>
+        <div>EMA50 (daily): <span className="font-medium">{fmtPrice(ema?.ema50)}</span></div>
+        <div>EMA200 (daily): <span className="font-medium">{fmtPrice(ema?.ema200)}</span></div>
       </div>
-    </div>
+    </Card>
   );
 }
 
 // ── Sector Heatmap ─────────────────────────────────────────────────────────
 function heatColor(pctStr) {
-  const v = parseFloat(pctStr);
+  const v = signOf(pctStr);
   if (isNaN(v)) return "bg-gray-50 text-gray-400";
   if (v > 1)    return "bg-green-200 text-green-900";
   if (v > 0.3)  return "bg-green-100 text-green-800";
@@ -144,17 +291,19 @@ function heatColor(pctStr) {
   return "bg-red-200 text-red-900";
 }
 
+// Reflowed to 2-3 columns (3-4 rows for 10 sectors) so it sits comfortably
+// in a half-width column next to Sentiment.
 function SectorHeatmap({ rows }) {
   const data = (rows || []).slice(1).filter(r => r[0]);
-  if (data.length === 0) return <div className="text-xs text-gray-400">No data</div>;
+  if (data.length === 0) return <NoData />;
   return (
-    <div className="grid grid-cols-3 md:grid-cols-5 gap-2 print:gap-1">
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 print:gap-1">
       {data.map((r, i) => {
         const [name, , , pct] = r;
         return (
           <div key={i} className={`rounded-lg p-3 print:p-1 text-xs print:text-[7px] ${heatColor(pct)}`}>
             <div className="font-medium truncate">{name}</div>
-            <div className="mt-1 print:mt-0">{pct}%</div>
+            <div className="mt-1 print:mt-0">{fmtPrice(pct)}%</div>
           </div>
         );
       })}
@@ -181,8 +330,8 @@ function FiiNetChart({ rows }) {
         datasets: [{
           label: "Net FII position",
           data: net,
-          borderColor: "#16a34a",
-          backgroundColor: "rgba(22,163,74,0.1)",
+          borderColor: "#059669",
+          backgroundColor: "rgba(5,150,105,0.1)",
           tension: 0.2,
           fill: true,
         }],
@@ -218,7 +367,7 @@ function ClientPositionChart({ rows }) {
         labels,
         datasets: [
           { label: "Long", data: longs, backgroundColor: "#2563eb" },
-          { label: "Short", data: shorts, backgroundColor: "#dc2626" },
+          { label: "Short", data: shorts, backgroundColor: "#ea580c" },
         ],
       },
       options: {
@@ -287,96 +436,149 @@ export default function DailyMarketView() {
 
       {loading && !lastUpdated && <div className="text-sm text-gray-400">Loading…</div>}
 
-      <Section title="Index Strip">
+      <Section title="Index Strip" accent={0}>
         <IndexStrip indexStripRow={dashboard.indexStrip} usdinrVixRows={dashboard.usdinrVix} />
       </Section>
 
-      <Section title="Indices">
+      <Section title="Indices" accent={1}>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 print:gap-1">
-          <SimpleTable title="Broader Indices" rows={dashboard.broaderIndices} />
-          <SimpleTable title="US Markets" rows={dashboard.usMarkets} />
-          <SimpleTable title="Asian Markets" rows={dashboard.asianMarkets} />
+          <IndicesTable title="Broader Indices" rows={dashboard.broaderIndices} />
+          <IndicesTable title="US Markets" rows={dashboard.usMarkets} />
+          <IndicesTable title="Asian Markets" rows={dashboard.asianMarkets} />
           <SimpleTable title="Advance / Decline" rows={scanner.breadth} />
         </div>
       </Section>
 
-      <Section title="Sentiment">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 print:gap-1">
-          <IndexSentimentPanel label="Nifty" pcr={sentiment.niftyPcr} maxOi={maxOi.nifty} ema={dailyEma.NIFTY} />
-          <IndexSentimentPanel label="BankNifty" pcr={sentiment.bnfPcr} maxOi={maxOi.bankNifty} ema={dailyEma.BANKNIFTY} />
+      <Section title="Sentiment & Sector Heatmap" accent={2}>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 print:gap-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 print:gap-1">
+            <IndexSentimentPanel label="Nifty" pcr={sentiment.niftyPcr} maxOi={maxOi.nifty} ema={dailyEma.NIFTY} accent={0} />
+            <IndexSentimentPanel label="BankNifty" pcr={sentiment.bnfPcr} maxOi={maxOi.bankNifty} ema={dailyEma.BANKNIFTY} accent={1} />
+          </div>
+          <SectorHeatmap rows={dashboard.sectorial} />
         </div>
       </Section>
 
-      <Section title="Sector Heatmap">
-        <SectorHeatmap rows={dashboard.sectorial} />
-      </Section>
-
-      <Section title="Top Gainers (by market cap)">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 print:gap-1">
-          <SimpleTable title="Largecap" rows={pickCols(scanner.gainersLargecap, MOVER_COLS)} />
-          <SimpleTable title="Midcap" rows={pickCols(scanner.gainersMidcap, MOVER_COLS)} />
-          <SimpleTable title="Smallcap" rows={pickCols(scanner.gainersSmallcap, MOVER_COLS)} />
+      <Section title="Top Gainers / Top Losers (by market cap)" accent={3}>
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 print:gap-1">
+          <div>
+            <div className="text-xs print:text-[7px] uppercase tracking-wide text-gray-400 mb-2 print:mb-1">Top Gainers</div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 print:gap-1">
+              <MoversTable title="Largecap" rows={pickCols(scanner.gainersLargecap, MOVER_COLS)} />
+              <MoversTable title="Midcap" rows={pickCols(scanner.gainersMidcap, MOVER_COLS)} />
+              <MoversTable title="Smallcap" rows={pickCols(scanner.gainersSmallcap, MOVER_COLS)} />
+            </div>
+          </div>
+          <div>
+            <div className="text-xs print:text-[7px] uppercase tracking-wide text-gray-400 mb-2 print:mb-1">Top Losers</div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 print:gap-1">
+              <MoversTable title="Largecap" rows={pickCols(scanner.loosersLargecap, MOVER_COLS)} />
+              <MoversTable title="Midcap" rows={pickCols(scanner.loosersMidcap, MOVER_COLS)} />
+              <MoversTable title="Smallcap" rows={pickCols(scanner.loosersSmallcap, MOVER_COLS)} />
+            </div>
+          </div>
         </div>
       </Section>
 
-      <Section title="Top Losers (by market cap)">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 print:gap-1">
-          <SimpleTable title="Largecap" rows={pickCols(scanner.loosersLargecap, MOVER_COLS)} />
-          <SimpleTable title="Midcap" rows={pickCols(scanner.loosersMidcap, MOVER_COLS)} />
-          <SimpleTable title="Smallcap" rows={pickCols(scanner.loosersSmallcap, MOVER_COLS)} />
+      <Section title="52-Week Range & Stock OI Buildup" accent={0}>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 print:gap-1">
+          <div className="lg:col-span-1 grid grid-cols-1 gap-4 print:gap-1">
+            <SimpleTable title="Near 52-Week Low" rows={trimBlanks(pickCols(scanner.near52Low, WEEK52_COLS))} />
+            <SimpleTable title="Near 52-Week High" rows={trimBlanks(pickCols(scanner.near52High, WEEK52_COLS))} />
+          </div>
+          <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4 print:gap-1">
+            <SimpleTable title="Long Buildup" rows={buildup.longBuildup} />
+            <SimpleTable title="Short Buildup" rows={buildup.shortBuildup} />
+            <SimpleTable title="Short Covering" rows={buildup.shortCovering} />
+            <SimpleTable title="Long Unwinding" rows={buildup.longUnwinding} />
+          </div>
         </div>
       </Section>
 
-      <Section title="52-Week Range">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 print:gap-1">
-          <SimpleTable title="Near 52-Week Low" rows={trimBlanks(pickCols(scanner.near52Low, WEEK52_COLS))} />
-          <SimpleTable title="Near 52-Week High" rows={trimBlanks(pickCols(scanner.near52High, WEEK52_COLS))} />
-        </div>
-      </Section>
-
-      <Section title="FII / DII Snapshot">
+      <Section title="FII / DII Snapshot" accent={1}>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 print:gap-1 mb-4 print:mb-1">
-          <div className="p-3 print:p-1 border border-gray-200 rounded-lg">
-            <div className="text-sm print:text-[8px] font-medium text-gray-700 mb-2 print:mb-1">Index Futures (Client-wise)</div>
+          <Card>
+            <CardTitle>Index Futures (Client-wise)</CardTitle>
             <ClientPositionChart rows={fii.participantPositions} />
             <div className="mt-2 print:mt-0">
-              <SimpleTable rows={pickCols(fii.participantPositions, PARTICIPANT_TABLE_COLS)} />
+              <table className="text-xs print:text-[7px] w-full">
+                <tbody>
+                  {(pickCols(fii.participantPositions, PARTICIPANT_TABLE_COLS) || []).map((row, i) => (
+                    <tr key={i} className="border-b border-gray-100 last:border-0">
+                      {row.map((cell, j) => (
+                        <td key={j} className="py-1 print:py-0 pr-3 print:pr-1 text-gray-600 whitespace-nowrap">{smartFmt(cell)}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          </div>
-          <div className="p-3 print:p-1 border border-gray-200 rounded-lg">
-            <div className="text-sm print:text-[8px] font-medium text-gray-700 mb-2 print:mb-1">Stock Futures (Client-wise)</div>
+          </Card>
+          <Card>
+            <CardTitle>Stock Futures (Client-wise)</CardTitle>
             <ClientPositionChart rows={fii.stockParticipantPositions} />
             <div className="mt-2 print:mt-0">
-              <SimpleTable rows={pickCols(fii.stockParticipantPositions, PARTICIPANT_TABLE_COLS)} />
+              <table className="text-xs print:text-[7px] w-full">
+                <tbody>
+                  {(pickCols(fii.stockParticipantPositions, PARTICIPANT_TABLE_COLS) || []).map((row, i) => (
+                    <tr key={i} className="border-b border-gray-100 last:border-0">
+                      {row.map((cell, j) => (
+                        <td key={j} className="py-1 print:py-0 pr-3 print:pr-1 text-gray-600 whitespace-nowrap">{smartFmt(cell)}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          </div>
-          <div className="p-3 print:p-1 border border-gray-200 rounded-lg">
-            <div className="text-sm print:text-[8px] font-medium text-gray-700 mb-2 print:mb-1">Historical Net FII Positions</div>
+          </Card>
+          <Card>
+            <CardTitle>Historical Net FII Positions</CardTitle>
             <FiiNetChart rows={fii.historicalNet} />
-            <div className="mt-2 print:mt-0">
-              <SimpleTable rows={fii.historicalNet} />
+            <div className="mt-2 print:mt-0 overflow-x-auto">
+              <table className="text-xs print:text-[7px] w-full">
+                <tbody>
+                  {(fii.historicalNet || []).map((row, i) => (
+                    <tr key={i} className="border-b border-gray-100 last:border-0">
+                      {row.map((cell, j) => (
+                        <td key={j} className="py-1 print:py-0 pr-3 print:pr-1 text-gray-600 whitespace-nowrap">{smartFmt(cell)}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          </div>
-          <div className="p-3 print:p-1 border border-gray-200 rounded-lg">
-            <div className="text-sm print:text-[8px] font-medium text-gray-700 mb-2 print:mb-1">FII Statistics</div>
-            <SimpleTable rows={fiiStats} />
+          </Card>
+          <Card>
+            <CardTitle>FII Statistics</CardTitle>
+            <table className="text-xs print:text-[7px] w-full">
+              <tbody>
+                {(fiiStats || []).map((row, i) => (
+                  <tr key={i} className="border-b border-gray-100 last:border-0">
+                    {row.map((cell, j) => (
+                      <td key={j} className="py-1 print:py-0 pr-3 print:pr-1 text-gray-600 whitespace-nowrap">{smartFmt(cell)}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
             <div className="text-sm print:text-[8px] font-medium text-gray-700 mt-3 print:mt-1 mb-2 print:mb-1">Nifty/BankNifty Net</div>
-            <SimpleTable rows={fii.niftyBankNet} />
-          </div>
+            <table className="text-xs print:text-[7px] w-full">
+              <tbody>
+                {(fii.niftyBankNet || []).map((row, i) => (
+                  <tr key={i} className="border-b border-gray-100 last:border-0">
+                    {row.map((cell, j) => (
+                      <td key={j} className="py-1 print:py-0 pr-3 print:pr-1 text-gray-600 whitespace-nowrap">{smartFmt(cell)}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 print:gap-1">
           <SimpleTable title="Index Futures Position" rows={fii.indexFutures} />
           <SimpleTable title="Stock Futures Position" rows={fii.stockFutures} />
-        </div>
-      </Section>
-
-      <Section title="Stock OI Buildup">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 print:gap-1">
-          <SimpleTable title="Long Buildup" rows={buildup.longBuildup} />
-          <SimpleTable title="Short Buildup" rows={buildup.shortBuildup} />
-          <SimpleTable title="Short Covering" rows={buildup.shortCovering} />
-          <SimpleTable title="Long Unwinding" rows={buildup.longUnwinding} />
         </div>
       </Section>
     </div>
