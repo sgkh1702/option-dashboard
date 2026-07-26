@@ -160,13 +160,13 @@ function SimpleTable({ title, rows, colWidths, tint, colorSign }) {
 
 // Indices table (Broader/US/Asian Markets): first row is the header, and
 // LTP/Change/%Change are colored green/red by the sign of Change, right-aligned.
-function IndicesTable({ title, rows }) {
+function IndicesTable({ title, rows, tint }) {
   if (!rows || rows.length === 0) {
-    return <Card>{title && <CardTitle>{title}</CardTitle>}<NoData /></Card>;
+    return <Card className={tint ?? ""}>{title && <CardTitle>{title}</CardTitle>}<NoData /></Card>;
   }
   const [header, ...data] = rows;
   return (
-    <Card className="overflow-x-auto">
+    <Card className={`overflow-x-auto ${tint ?? ""}`}>
       {title && <CardTitle>{title}</CardTitle>}
       <table className="text-xs print:text-[7px] w-full">
         <thead>
@@ -197,13 +197,13 @@ function IndicesTable({ title, rows }) {
 
 // Gainers/losers table: Symbol, CMP, %Change — CMP/%Change colored by sign
 // of %Change, right-aligned.
-function MoversTable({ title, rows }) {
+function MoversTable({ title, rows, tint }) {
   if (!rows || rows.length === 0) {
-    return <Card>{title && <CardTitle>{title}</CardTitle>}<NoData /></Card>;
+    return <Card className={tint ?? ""}>{title && <CardTitle>{title}</CardTitle>}<NoData /></Card>;
   }
   const [header, ...data] = rows;
   return (
-    <Card className="overflow-x-auto">
+    <Card className={`overflow-x-auto ${tint ?? ""}`}>
       {title && <CardTitle>{title}</CardTitle>}
       <table className="text-xs print:text-[7px] w-full">
         <thead>
@@ -313,7 +313,7 @@ function useDailyEma() {
 
 function IndexSentimentPanel({ label, pcr, maxOi, ema, accent = 0 }) {
   return (
-    <Card className={`border-t-4 ${ACCENT_BORDER[accent % ACCENT_BORDER.length]} text-sm print:text-[8px]`}>
+    <Card className={`border-t-4 ${ACCENT_BORDER[accent % ACCENT_BORDER.length]} ${ACCENT_TINT[accent % ACCENT_TINT.length]} text-sm print:text-[8px]`}>
       <div className={`font-semibold mb-2 print:mb-1 ${ACCENT_TEXT[accent % ACCENT_TEXT.length]}`}>
         {label} — PCR: {fmtPcr(pcr)}
       </div>
@@ -498,17 +498,17 @@ export default function DailyMarketView() {
       </Section>
 
       <Section title="Indices" accent={1}>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 print:gap-1">
-          <IndicesTable title="Broader Indices" rows={dashboard.broaderIndices} />
-          <IndicesTable title="US Markets" rows={dashboard.usMarkets} />
-          <IndicesTable title="Asian Markets" rows={dashboard.asianMarkets} />
-          <SimpleTable title="Advance / Decline" rows={scanner.breadth} />
+        <div className="grid grid-cols-1 md:grid-cols-4 print:grid-cols-4 gap-4 print:gap-1">
+          <IndicesTable title="Broader Indices" rows={dashboard.broaderIndices} tint={ACCENT_TINT[0]} />
+          <IndicesTable title="US Markets" rows={dashboard.usMarkets} tint={ACCENT_TINT[1]} />
+          <IndicesTable title="Asian Markets" rows={dashboard.asianMarkets} tint={ACCENT_TINT[2]} />
+          <SimpleTable title="Advance / Decline" rows={scanner.breadth} tint={ACCENT_TINT[3]} />
         </div>
       </Section>
 
       <Section title="Sentiment & Sector Heatmap" accent={2}>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 print:gap-1">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 print:gap-1">
+        <div className="grid grid-cols-1 lg:grid-cols-2 print:grid-cols-2 gap-4 print:gap-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 print:grid-cols-2 gap-4 print:gap-1">
             <IndexSentimentPanel label="Nifty" pcr={sentiment.niftyPcr} maxOi={maxOi.nifty} ema={dailyEma.NIFTY} accent={0} />
             <IndexSentimentPanel label="BankNifty" pcr={sentiment.bnfPcr} maxOi={maxOi.bankNifty} ema={dailyEma.BANKNIFTY} accent={1} />
           </div>
@@ -517,39 +517,39 @@ export default function DailyMarketView() {
       </Section>
 
       <Section title="Top Gainers / Top Losers (by market cap)" accent={3}>
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 print:gap-1">
+        <div className="grid grid-cols-1 xl:grid-cols-2 print:grid-cols-2 gap-6 print:gap-1">
           <div>
             <div className="text-xs print:text-[7px] uppercase tracking-wide text-gray-400 mb-2 print:mb-1">Top Gainers</div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 print:gap-1">
-              <MoversTable title="Largecap" rows={pickCols(scanner.gainersLargecap, MOVER_COLS)} />
-              <MoversTable title="Midcap" rows={pickCols(scanner.gainersMidcap, MOVER_COLS)} />
-              <MoversTable title="Smallcap" rows={pickCols(scanner.gainersSmallcap, MOVER_COLS)} />
+            <div className="grid grid-cols-1 sm:grid-cols-3 print:grid-cols-3 gap-4 print:gap-1">
+              <MoversTable title="Largecap" rows={pickCols(scanner.gainersLargecap, MOVER_COLS)} tint={ACCENT_TINT[0]} />
+              <MoversTable title="Midcap" rows={pickCols(scanner.gainersMidcap, MOVER_COLS)} tint={ACCENT_TINT[1]} />
+              <MoversTable title="Smallcap" rows={pickCols(scanner.gainersSmallcap, MOVER_COLS)} tint={ACCENT_TINT[2]} />
             </div>
           </div>
           <div>
             <div className="text-xs print:text-[7px] uppercase tracking-wide text-gray-400 mb-2 print:mb-1">Top Losers</div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 print:gap-1">
-              <MoversTable title="Largecap" rows={pickCols(scanner.loosersLargecap, MOVER_COLS)} />
-              <MoversTable title="Midcap" rows={pickCols(scanner.loosersMidcap, MOVER_COLS)} />
-              <MoversTable title="Smallcap" rows={pickCols(scanner.loosersSmallcap, MOVER_COLS)} />
+            <div className="grid grid-cols-1 sm:grid-cols-3 print:grid-cols-3 gap-4 print:gap-1">
+              <MoversTable title="Largecap" rows={pickCols(scanner.loosersLargecap, MOVER_COLS)} tint={ACCENT_TINT[3]} />
+              <MoversTable title="Midcap" rows={pickCols(scanner.loosersMidcap, MOVER_COLS)} tint={ACCENT_TINT[0]} />
+              <MoversTable title="Smallcap" rows={pickCols(scanner.loosersSmallcap, MOVER_COLS)} tint={ACCENT_TINT[1]} />
             </div>
           </div>
         </div>
       </Section>
 
       <Section title="52-Week Range & Stock OI Buildup" accent={0}>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 print:gap-1">
-          <SimpleTable title="Near 52-Week Low" rows={trimBlanks(pickCols(scanner.near52Low, WEEK52_COLS))} colWidths={[50, 25, 25]} />
-          <SimpleTable title="Near 52-Week High" rows={trimBlanks(pickCols(scanner.near52High, WEEK52_COLS))} colWidths={[50, 25, 25]} />
-          <SimpleTable title="Long Buildup" rows={buildup.longBuildup} colWidths={[65, 35]} />
-          <SimpleTable title="Short Buildup" rows={buildup.shortBuildup} colWidths={[65, 35]} />
-          <SimpleTable title="Short Covering" rows={buildup.shortCovering} colWidths={[65, 35]} />
-          <SimpleTable title="Long Unwinding" rows={buildup.longUnwinding} colWidths={[65, 35]} />
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 print:grid-cols-6 gap-4 print:gap-1">
+          <SimpleTable title="Near 52-Week Low" rows={trimBlanks(pickCols(scanner.near52Low, WEEK52_COLS))} colWidths={[50, 25, 25]} tint={ACCENT_TINT[0]} />
+          <SimpleTable title="Near 52-Week High" rows={trimBlanks(pickCols(scanner.near52High, WEEK52_COLS))} colWidths={[50, 25, 25]} tint={ACCENT_TINT[1]} />
+          <SimpleTable title="Long Buildup" rows={buildup.longBuildup} colWidths={[65, 35]} tint={ACCENT_TINT[2]} />
+          <SimpleTable title="Short Buildup" rows={buildup.shortBuildup} colWidths={[65, 35]} tint={ACCENT_TINT[3]} />
+          <SimpleTable title="Short Covering" rows={buildup.shortCovering} colWidths={[65, 35]} tint={ACCENT_TINT[0]} />
+          <SimpleTable title="Long Unwinding" rows={buildup.longUnwinding} colWidths={[65, 35]} tint={ACCENT_TINT[1]} />
         </div>
       </Section>
 
       <Section title="FII / DII Snapshot" accent={1}>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 print:gap-1 mb-4 print:mb-1">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 print:grid-cols-4 gap-4 print:gap-1 mb-4 print:mb-1">
           <Card className={ACCENT_TINT[0]}>
             <CardTitle>Index Futures (Client-wise)</CardTitle>
             <ClientPositionChart rows={fii.participantPositions} />
@@ -579,7 +579,7 @@ export default function DailyMarketView() {
           </Card>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 print:gap-1">
+        <div className="grid grid-cols-1 md:grid-cols-2 print:grid-cols-2 gap-4 print:gap-1">
           <SimpleTable title="Index Futures Position" rows={fii.indexFutures} tint={ACCENT_TINT[0]} colorSign />
           <SimpleTable title="Stock Futures Position" rows={fii.stockFutures} tint={ACCENT_TINT[1]} colorSign />
         </div>
