@@ -9,7 +9,7 @@ const PROXY = import.meta.env.VITE_PROXY_URL ?? "http://localhost:5000";
 const ACCENT_BORDER = ["border-t-blue-600", "border-t-violet-600", "border-t-emerald-600", "border-t-orange-600"];
 const ACCENT_DOT     = ["bg-blue-600", "bg-violet-600", "bg-emerald-600", "bg-orange-600"];
 const ACCENT_TEXT    = ["text-blue-600", "text-violet-600", "text-emerald-600", "text-orange-600"];
-const ACCENT_TINT    = ["bg-blue-50", "bg-violet-50", "bg-emerald-50", "bg-orange-50"];
+const ACCENT_TINT    = ["bg-blue-50", "bg-blue-50", "bg-blue-50", "bg-blue-50"];
 
 function pickCols(rows, indices) {
   if (!rows) return rows;
@@ -231,9 +231,9 @@ function MoversTable({ title, rows, tint }) {
   );
 }
 
-function Section({ title, accent = 0, children }) {
+function Section({ title, accent = 0, className = "", children }) {
   return (
-    <div className="mb-6 print:mb-2">
+    <div className={`mb-6 print:mb-2 ${className}`}>
       <div className="flex items-center gap-2 mb-2 print:mb-1">
         <span className={`w-2 h-2 rounded-full ${ACCENT_DOT[accent % ACCENT_DOT.length]}`} />
         <span className="text-xs print:text-[8px] uppercase tracking-wide text-gray-500 font-semibold">{title}</span>
@@ -361,7 +361,7 @@ function SectorHeatmap({ rows }) {
   );
 }
 
-// ── Charts (hidden on print — the tables under them carry the same data) ──
+// ── Charts (now included in print output too — see print-color-adjust below) ──
 // Dates ascend left-to-right (oldest first) — the sheet returns latest-first,
 // so the filtered data is reversed before charting.
 function FiiNetChart({ rows }) {
@@ -398,7 +398,7 @@ function FiiNetChart({ rows }) {
     return () => chartRef.current?.destroy();
   }, [rows]);
 
-  return <div className="relative h-40 print:hidden"><canvas ref={canvasRef} /></div>;
+  return <div className="relative h-40 print:h-28"><canvas ref={canvasRef} /></div>;
 }
 
 function ClientPositionChart({ rows }) {
@@ -433,7 +433,7 @@ function ClientPositionChart({ rows }) {
     return () => chartRef.current?.destroy();
   }, [rows]);
 
-  return <div className="relative h-36 print:hidden"><canvas ref={canvasRef} /></div>;
+  return <div className="relative h-36 print:h-28"><canvas ref={canvasRef} /></div>;
 }
 
 const MOVER_COLS  = [0, 1, 3];
@@ -459,6 +459,12 @@ export default function DailyMarketView() {
           #dmv-print-area, #dmv-print-area * { visibility: visible; }
           #dmv-print-area { position: absolute; left: 0; top: 0; width: 100%; }
           .no-print { display: none !important; }
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            color-adjust: exact !important;
+          }
+          .print-page-break { break-before: page; page-break-before: always; }
         }
         @page { size: A4; margin: 8mm; }
       `}</style>
@@ -541,14 +547,14 @@ export default function DailyMarketView() {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 print:grid-cols-6 gap-4 print:gap-1">
           <SimpleTable title="Near 52-Week Low" rows={trimBlanks(pickCols(scanner.near52Low, WEEK52_COLS))} colWidths={[50, 25, 25]} tint={ACCENT_TINT[0]} />
           <SimpleTable title="Near 52-Week High" rows={trimBlanks(pickCols(scanner.near52High, WEEK52_COLS))} colWidths={[50, 25, 25]} tint={ACCENT_TINT[1]} />
-          <SimpleTable title="Long Buildup" rows={buildup.longBuildup} colWidths={[65, 35]} tint={ACCENT_TINT[2]} />
-          <SimpleTable title="Short Buildup" rows={buildup.shortBuildup} colWidths={[65, 35]} tint={ACCENT_TINT[3]} />
-          <SimpleTable title="Short Covering" rows={buildup.shortCovering} colWidths={[65, 35]} tint={ACCENT_TINT[0]} />
-          <SimpleTable title="Long Unwinding" rows={buildup.longUnwinding} colWidths={[65, 35]} tint={ACCENT_TINT[1]} />
+          <SimpleTable title="Long Buildup" rows={buildup.longBuildup} colWidths={[65, 35]} tint={ACCENT_TINT[2]} colorSign />
+          <SimpleTable title="Short Buildup" rows={buildup.shortBuildup} colWidths={[65, 35]} tint={ACCENT_TINT[3]} colorSign />
+          <SimpleTable title="Short Covering" rows={buildup.shortCovering} colWidths={[65, 35]} tint={ACCENT_TINT[0]} colorSign />
+          <SimpleTable title="Long Unwinding" rows={buildup.longUnwinding} colWidths={[65, 35]} tint={ACCENT_TINT[1]} colorSign />
         </div>
       </Section>
 
-      <Section title="FII / DII Snapshot" accent={1}>
+      <Section title="FII / DII Snapshot" accent={1} className="print-page-break">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 print:grid-cols-4 gap-4 print:gap-1 mb-4 print:mb-1">
           <Card className={ACCENT_TINT[0]}>
             <CardTitle>Index Futures (Client-wise)</CardTitle>
