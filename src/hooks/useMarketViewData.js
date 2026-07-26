@@ -37,7 +37,10 @@ export function useMarketViewData() {
     historicalNet: [], niftyBankNet: [],
   });
   const [fiiStats,    setFiiStats]   = useState([]);
-  const [dashboard,   setDashboard]  = useState({ indexStrip: [], broaderIndices: [], sectorial: [], usMarkets: [], asianMarkets: [], usdinrVix: [] });
+  const [dashboard,   setDashboard]  = useState({
+    niftySpot: [], bankNiftySpot: [], sensexSpot: [],
+    broaderIndices: [], sectorial: [], usMarkets: [], asianMarkets: [], usdinrVix: [],
+  });
   const [scanner,     setScanner]    = useState({
     gainersLargecap: [], gainersMidcap: [], gainersSmallcap: [],
     loosersLargecap: [], loosersMidcap: [], loosersSmallcap: [],
@@ -55,8 +58,6 @@ export function useMarketViewData() {
     const { buildup: b, fii: f, fiiStats: fs, fiiNiftyBankNet: nb, dashboard: d, scanner: s } = MARKET_VIEW_RANGES;
 
     // ── Everything on the daily-processed workbook, in ONE batched request ──
-    // (previously ~26 separate fetchRange() calls — this alone was blowing
-    // through the Sheets API's per-minute read-request quota)
     const marketViewSpecs = [
       { sheetName: b.tab, range: b.longBuildup,   skipHeader: true },
       { sheetName: b.tab, range: b.shortBuildup,  skipHeader: true },
@@ -69,7 +70,9 @@ export function useMarketViewData() {
       { sheetName: f.tab, range: f.historicalNet },
       { sheetName: nb.tab, range: nb.range },
       { sheetName: fs.tab, range: fs.range },
-      { sheetName: d.tab, range: d.indexStrip },
+      { sheetName: d.tab, range: d.niftySpot },
+      { sheetName: d.tab, range: d.bankNiftySpot },
+      { sheetName: d.tab, range: d.sensexSpot },
       { sheetName: d.tab, range: d.broaderIndices },
       { sheetName: d.tab, range: d.sectorial },
       { sheetName: d.tab, range: d.usMarkets },
@@ -110,7 +113,9 @@ export function useMarketViewData() {
     });
     setFiiStats(mv[i++]);
     setDashboard({
-      indexStrip:     mv[i++],
+      niftySpot:      mv[i++],
+      bankNiftySpot:  mv[i++],
+      sensexSpot:     mv[i++],
       broaderIndices: mv[i++],
       sectorial:      mv[i++],
       usMarkets:      mv[i++],

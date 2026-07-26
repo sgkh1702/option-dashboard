@@ -64,7 +64,12 @@ export const MARKET_VIEW_RANGES = {
   },
   dashboard: {
     tab: "Dashboard",
-    indexStrip:     "C2:P2",
+    // Index Strip — fetched as 3 separate short rows (rather than one wide
+    // C2:P2 row) since parsing a single wide row by column offset wasn't
+    // rendering reliably.
+    niftySpot:      "C2:E2",
+    bankNiftySpot:  "H2:J2",
+    sensexSpot:     "M2:O2",
     broaderIndices: "C6:F10",
     sectorial:      "H6:K16",
     usMarkets:      "M6:P9",
