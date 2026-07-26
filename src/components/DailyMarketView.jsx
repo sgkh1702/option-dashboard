@@ -392,6 +392,12 @@ export default function DailyMarketView() {
         @page { size: A4; margin: 8mm; }
       `}</style>
 
+      {lastUpdated && (
+        <div className="hidden print:block text-xs text-gray-500 mb-2">
+          Report generated: {lastUpdated.toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "medium" })}
+        </div>
+      )}
+
       <div className="flex items-center justify-between mb-4 print:mb-1">
         <h2 className="text-sm font-medium text-gray-700">Daily Market View</h2>
         <div className="flex items-center gap-3 no-print">
