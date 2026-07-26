@@ -1,6 +1,4 @@
-import { useEffect, useRef, useState } from "react";
-import { Chart, registerables } from "chart.js";
-Chart.register(...registerables);
+import { useEffect, useState } from "react";
 import { useMarketViewData } from "../hooks/useMarketViewData";
 
 const PROXY = import.meta.env.VITE_PROXY_URL ?? "http://localhost:5000";
@@ -10,17 +8,6 @@ const ACCENT_BORDER = ["border-t-blue-600", "border-t-violet-600", "border-t-eme
 const ACCENT_DOT     = ["bg-blue-600", "bg-violet-600", "bg-emerald-600", "bg-orange-600"];
 const ACCENT_TEXT    = ["text-blue-600", "text-violet-600", "text-emerald-600", "text-orange-600"];
 const ACCENT_TINT    = ["bg-blue-50", "bg-blue-50", "bg-blue-50", "bg-blue-50"];
-
-// Chart.js canvases size themselves via a ResizeObserver, which doesn't
-// reliably fire in time before a browser takes its print/PDF snapshot —
-// this can leave a chart rendered at a stale size, overlapping the content
-// below it. Every chart registers itself here so the Print button can force
-// a resize on all of them immediately before printing.
-const chartInstances = new Set();
-function registerChart(chart) {
-  chartInstances.add(chart);
-  return () => chartInstances.delete(chart);
-}
 
 function pickCols(rows, indices) {
   if (!rows) return rows;
@@ -372,83 +359,6 @@ function SectorHeatmap({ rows }) {
   );
 }
 
-// ── Charts (now included in print output too — see print-color-adjust below) ──
-// Dates ascend left-to-right (oldest first) — the sheet returns latest-first,
-// so the filtered data is reversed before charting.
-function FiiNetChart({ rows }) {
-  const canvasRef = useRef(null);
-  const chartRef  = useRef(null);
-
-  useEffect(() => {
-    if (!canvasRef.current || !rows || rows.length === 0) return;
-    const data = rows.slice(1).filter(r => r[0]).reverse();
-    const labels = data.map(r => r[0]);
-    const net    = data.map(r => parseFloat(String(r[3]).replace(/,/g, "")) || 0);
-
-    if (chartRef.current) chartRef.current.destroy();
-    chartRef.current = new Chart(canvasRef.current, {
-      type: "line",
-      data: {
-        labels,
-        datasets: [{
-          label: "Net FII position",
-          data: net,
-          borderColor: "#059669",
-          backgroundColor: "rgba(5,150,105,0.1)",
-          tension: 0.2,
-          fill: true,
-        }],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: { x: { ticks: { font: { size: 9 } } }, y: { ticks: { font: { size: 9 } } } },
-      },
-    });
-    const unregister = registerChart(chartRef.current);
-    return () => { unregister(); chartRef.current?.destroy(); };
-  }, [rows]);
-
-  return <div className="relative h-40 overflow-hidden"><canvas ref={canvasRef} /></div>;
-}
-
-function ClientPositionChart({ rows }) {
-  const canvasRef = useRef(null);
-  const chartRef  = useRef(null);
-
-  useEffect(() => {
-    if (!canvasRef.current || !rows || rows.length === 0) return;
-    const data   = rows.slice(1).filter(r => r[0]);
-    const labels = data.map(r => r[0]);
-    const longs  = data.map(r => parseFloat(String(r[1]).replace(/,/g, "")) || 0);
-    const shorts = data.map(r => parseFloat(String(r[2]).replace(/,/g, "")) || 0);
-
-    if (chartRef.current) chartRef.current.destroy();
-    chartRef.current = new Chart(canvasRef.current, {
-      type: "bar",
-      data: {
-        labels,
-        datasets: [
-          { label: "Long", data: longs, backgroundColor: "#2563eb" },
-          { label: "Short", data: shorts, backgroundColor: "#ea580c" },
-        ],
-      },
-      options: {
-        indexAxis: "y",
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { position: "bottom", labels: { font: { size: 9 } } } },
-        scales: { x: { ticks: { font: { size: 9 } } }, y: { ticks: { font: { size: 9 } } } },
-      },
-    });
-    const unregister = registerChart(chartRef.current);
-    return () => { unregister(); chartRef.current?.destroy(); };
-  }, [rows]);
-
-  return <div className="relative h-36 overflow-hidden"><canvas ref={canvasRef} /></div>;
-}
-
 const MOVER_COLS  = [0, 1, 3];
 const WEEK52_COLS = [0, 1, 3];
 // Participant table columns as fetched: ClientType(0), Long(1), Short(2), Net(3) -> drop Net for the compact table
@@ -463,11 +373,6 @@ export default function DailyMarketView() {
   const dailyEma = useDailyEma();
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
-
-  const handlePrint = () => {
-    chartInstances.forEach(c => { try { c.resize(); } catch { /* ignore */ } });
-    requestAnimationFrame(() => window.print());
-  };
 
   return (
     <div id="dmv-print-area">
@@ -493,7 +398,7 @@ export default function DailyMarketView() {
           {lastUpdated && (
             <span className="text-xs text-gray-400">Updated {lastUpdated.toLocaleTimeString("en-IN")}</span>
           )}
-          <button onClick={handlePrint}
+          <button onClick={() => window.print()}
             className="text-xs px-3 py-1 border border-gray-300 rounded-md text-gray-600 hover:bg-gray-50">
             Print (A4)
           </button>
@@ -576,21 +481,18 @@ export default function DailyMarketView() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 print:grid-cols-4 gap-4 print:gap-1 mb-4 print:mb-1">
           <Card className={ACCENT_TINT[0]}>
             <CardTitle>Index Futures (Client-wise)</CardTitle>
-            <ClientPositionChart rows={fii.participantPositions} />
             <div className="mt-2 print:mt-0">
               <DataTable rows={pickCols(fii.participantPositions, PARTICIPANT_TABLE_COLS)} colorSign />
             </div>
           </Card>
           <Card className={ACCENT_TINT[1]}>
             <CardTitle>Stock Futures (Client-wise)</CardTitle>
-            <ClientPositionChart rows={fii.stockParticipantPositions} />
             <div className="mt-2 print:mt-0">
               <DataTable rows={pickCols(fii.stockParticipantPositions, PARTICIPANT_TABLE_COLS)} colorSign />
             </div>
           </Card>
           <Card className={`${ACCENT_TINT[2]} overflow-x-auto`}>
             <CardTitle>Historical Net FII Positions</CardTitle>
-            <FiiNetChart rows={fii.historicalNet} />
             <div className="mt-2 print:mt-0 overflow-x-auto">
               <DataTable rows={reverseDataKeepHeader(fii.historicalNet)} colorSign />
             </div>
