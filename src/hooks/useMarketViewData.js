@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { fetchRange, parseRow } from "../utils/gsheets";
-import { MARKET_VIEW_SHEET_ID, MARKET_VIEW_RANGES, SHEETS, PCR_COLS, RAW_COLS } from "../config/sheets";
+import { MARKET_VIEW_SHEET_ID, MARKET_VIEW_RANGES, SHEETS, RAW_COLS } from "../config/sheets";
 
 const opts         = { sheetId: MARKET_VIEW_SHEET_ID };
 const optsNoHeader = { sheetId: MARKET_VIEW_SHEET_ID, skipHeader: false };
@@ -132,13 +132,14 @@ export function useMarketViewData() {
     });
     if (scannerResult) setScanner(scannerResult);
 
+    // PCR: single cell O20 on Nifty2 / Banknifty2 tabs (original sheet, default sheetId)
     const sentimentResult = await safeSection(errs, "Sentiment (PCR)", async () => {
-      const [niftyPcrRows, bnfPcrRows] = await Promise.all([
-        fetchRange(SHEETS.NIFTY.pcr, "A:H"),
-        fetchRange(SHEETS.BANKNIFTY.pcr, "A:H"),
+      const [niftyRows, bnfRows] = await Promise.all([
+        fetchRange(SHEETS.NIFTY.dashboard, "O20:O20", { skipHeader: false }),
+        fetchRange(SHEETS.BANKNIFTY.dashboard, "O20:O20", { skipHeader: false }),
       ]);
-      const niftyPcr = niftyPcrRows.length ? parseRow(niftyPcrRows[niftyPcrRows.length - 1], PCR_COLS).pcr : null;
-      const bnfPcr   = bnfPcrRows.length   ? parseRow(bnfPcrRows[bnfPcrRows.length - 1], PCR_COLS).pcr   : null;
+      const niftyPcr = niftyRows?.[0]?.[0] ?? null;
+      const bnfPcr   = bnfRows?.[0]?.[0] ?? null;
       return { niftyPcr, bnfPcr };
     });
     if (sentimentResult) setSentiment(sentimentResult);
