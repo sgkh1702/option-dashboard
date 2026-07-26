@@ -11,6 +11,17 @@ const ACCENT_DOT     = ["bg-blue-600", "bg-violet-600", "bg-emerald-600", "bg-or
 const ACCENT_TEXT    = ["text-blue-600", "text-violet-600", "text-emerald-600", "text-orange-600"];
 const ACCENT_TINT    = ["bg-blue-50", "bg-blue-50", "bg-blue-50", "bg-blue-50"];
 
+// Chart.js canvases size themselves via a ResizeObserver, which doesn't
+// reliably fire in time before a browser takes its print/PDF snapshot —
+// this can leave a chart rendered at a stale size, overlapping the content
+// below it. Every chart registers itself here so the Print button can force
+// a resize on all of them immediately before printing.
+const chartInstances = new Set();
+function registerChart(chart) {
+  chartInstances.add(chart);
+  return () => chartInstances.delete(chart);
+}
+
 function pickCols(rows, indices) {
   if (!rows) return rows;
   return rows.map(row => indices.map(i => row[i]));
@@ -395,10 +406,11 @@ function FiiNetChart({ rows }) {
         scales: { x: { ticks: { font: { size: 9 } } }, y: { ticks: { font: { size: 9 } } } },
       },
     });
-    return () => chartRef.current?.destroy();
+    const unregister = registerChart(chartRef.current);
+    return () => { unregister(); chartRef.current?.destroy(); };
   }, [rows]);
 
-  return <div className="relative h-40 print:h-28"><canvas ref={canvasRef} /></div>;
+  return <div className="relative h-40"><canvas ref={canvasRef} /></div>;
 }
 
 function ClientPositionChart({ rows }) {
@@ -430,10 +442,11 @@ function ClientPositionChart({ rows }) {
         scales: { x: { ticks: { font: { size: 9 } } }, y: { ticks: { font: { size: 9 } } } },
       },
     });
-    return () => chartRef.current?.destroy();
+    const unregister = registerChart(chartRef.current);
+    return () => { unregister(); chartRef.current?.destroy(); };
   }, [rows]);
 
-  return <div className="relative h-36 print:h-28"><canvas ref={canvasRef} /></div>;
+  return <div className="relative h-36"><canvas ref={canvasRef} /></div>;
 }
 
 const MOVER_COLS  = [0, 1, 3];
@@ -450,6 +463,11 @@ export default function DailyMarketView() {
   const dailyEma = useDailyEma();
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  const handlePrint = () => {
+    chartInstances.forEach(c => { try { c.resize(); } catch { /* ignore */ } });
+    requestAnimationFrame(() => window.print());
+  };
 
   return (
     <div id="dmv-print-area">
@@ -475,7 +493,7 @@ export default function DailyMarketView() {
           {lastUpdated && (
             <span className="text-xs text-gray-400">Updated {lastUpdated.toLocaleTimeString("en-IN")}</span>
           )}
-          <button onClick={() => window.print()}
+          <button onClick={handlePrint}
             className="text-xs px-3 py-1 border border-gray-300 rounded-md text-gray-600 hover:bg-gray-50">
             Print (A4)
           </button>
