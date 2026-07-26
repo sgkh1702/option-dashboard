@@ -410,7 +410,7 @@ function FiiNetChart({ rows }) {
     return () => { unregister(); chartRef.current?.destroy(); };
   }, [rows]);
 
-  return <div className="relative h-40"><canvas ref={canvasRef} /></div>;
+  return <div className="relative h-40 overflow-hidden"><canvas ref={canvasRef} /></div>;
 }
 
 function ClientPositionChart({ rows }) {
@@ -446,7 +446,7 @@ function ClientPositionChart({ rows }) {
     return () => { unregister(); chartRef.current?.destroy(); };
   }, [rows]);
 
-  return <div className="relative h-36"><canvas ref={canvasRef} /></div>;
+  return <div className="relative h-36 overflow-hidden"><canvas ref={canvasRef} /></div>;
 }
 
 const MOVER_COLS  = [0, 1, 3];
