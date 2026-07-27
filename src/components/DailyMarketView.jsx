@@ -360,7 +360,7 @@ function SectorHeatmap({ rows }) {
 }
 
 // ── Market News (Moneycontrol RSS via backend /market-news) ───────────────
-function useMarketNews(feed = "latest", limit = 15) {
+function useMarketNews(feed = "markets", limit = 15) {
   const [news, setNews] = useState({ items: [], loading: true, error: null });
 
   useEffect(() => {
