@@ -359,6 +359,67 @@ function SectorHeatmap({ rows }) {
   );
 }
 
+// ── Market News (Moneycontrol RSS via backend /market-news) ───────────────
+function useMarketNews(feed = "business", limit = 15) {
+  const [news, setNews] = useState({ items: [], loading: true, error: null });
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${PROXY}/market-news?feed=${feed}&limit=${limit}`)
+      .then(r => r.json())
+      .then(data => {
+        if (cancelled) return;
+        if (data?.error) setNews({ items: [], loading: false, error: data.error });
+        else setNews({ items: data?.items ?? [], loading: false, error: null });
+      })
+      .catch(e => {
+        if (!cancelled) setNews({ items: [], loading: false, error: e.message });
+      });
+    return () => { cancelled = true; };
+  }, [feed, limit]);
+
+  return news;
+}
+
+function fmtNewsTime(pubDate) {
+  if (!pubDate) return "";
+  const d = new Date(pubDate);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+// Not shown in print — these are live external links, not report data.
+function MarketNewsPanel({ news, accent = 0 }) {
+  return (
+    <Card className={ACCENT_TINT[accent % ACCENT_TINT.length]}>
+      <CardTitle>Market News</CardTitle>
+      {news.loading ? (
+        <div className="text-xs text-gray-400">Loading news…</div>
+      ) : news.error ? (
+        <div className="text-xs text-red-600">{'\u26A0'} {news.error}</div>
+      ) : news.items.length === 0 ? (
+        <NoData />
+      ) : (
+        <ul className="text-xs space-y-2 max-h-72 overflow-y-auto pr-1">
+          {news.items.map((item, i) => (
+            <li key={i} className="border-b border-gray-100 last:border-0 pb-2 last:pb-0">
+              <a
+                href={item.link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-gray-700 hover:text-blue-600 hover:underline"
+              >
+                {item.title}
+              </a>
+              {item.pubDate && <div className="text-gray-400 mt-0.5">{fmtNewsTime(item.pubDate)}</div>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
 const MOVER_COLS  = [0, 1, 3];
 const WEEK52_COLS = [0, 1, 3];
 // Participant table columns as fetched: ClientType(0), Long(1), Short(2), Net(3) -> drop Net for the compact table
@@ -371,6 +432,7 @@ export default function DailyMarketView() {
   } = useMarketViewData();
 
   const dailyEma = useDailyEma();
+  const news = useMarketNews();
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -430,6 +492,10 @@ export default function DailyMarketView() {
           sensexSpot={dashboard.sensexSpot}
           usdinrVixRows={dashboard.usdinrVix}
         />
+      </Section>
+
+      <Section title="Market News" accent={2} className="print:hidden">
+        <MarketNewsPanel news={news} accent={2} />
       </Section>
 
       <Section title="Indices" accent={1}>
