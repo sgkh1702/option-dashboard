@@ -162,7 +162,14 @@ function DataTable({ rows }) {
 }
 
 // ── Single chart section with strike dropdown ──────────────────────────────
-function ChartSection({ label, defaultStrike, allStrikes, rawRows, canvasRef, selectedExpiry }) {
+// NOTE: rawRows arrives already filtered by selectedExpiry upstream in
+// useSheetData.js (which uses the correct expiry column index, NF_EXPIRY_COL
+// = 17). This component previously re-filtered by expiry using the wrong
+// column index (r[15], which is CE Volume, not Expiry) — that mismatch meant
+// every Nifty row got filtered out on days it ran, while Bank Nifty was
+// unaffected only because it's never passed a selectedExpiry. Fixed by
+// dropping the redundant re-filter and trusting the upstream filtering.
+function ChartSection({ label, defaultStrike, allStrikes, rawRows, canvasRef }) {
   const [strike,  setStrike]  = useState(defaultStrike);
   const [showLtp, setShowLtp] = useState(true);
 
@@ -171,17 +178,9 @@ function ChartSection({ label, defaultStrike, allStrikes, rawRows, canvasRef, se
   const rows = useMemo(() => {
     if (!rawRows?.length || !strike) return [];
     return rawRows
-      .filter(r => {
-        if (parseFloat(r[7]) !== strike) return false;
-        // Col P (index 15) = Expiry — present only in NFData rows
-        // If selectedExpiry provided and row has expiry col, filter by it
-        if (selectedExpiry && r[15] && r[15].trim() !== "") {
-          return r[15].trim() === selectedExpiry;
-        }
-        return true;
-      })
+      .filter(r => parseFloat(r[7]) === strike)
       .map(r => parseRow(r, ATM_COLS));
-  }, [rawRows, strike, selectedExpiry]);
+  }, [rawRows, strike]);
 
   const labels   = useMemo(() => rows.map(r => r.time), [rows]);
   const datasets = useMemo(() => {
@@ -297,9 +296,9 @@ export default function OIChart({ rawRows, atm, step, chain, selectedExpiry }) {
 
   return (
     <div className="flex flex-col gap-2" style={{ height: "calc(100vh - 195px)", minHeight: 480 }}>
-      <ChartSection label="ATM+1" defaultStrike={p1Strike} allStrikes={allStrikes} rawRows={rawRows} canvasRef={refP1}  selectedExpiry={selectedExpiry} />
-      <ChartSection label="ATM"   defaultStrike={atm}      allStrikes={allStrikes} rawRows={rawRows} canvasRef={refAtm} selectedExpiry={selectedExpiry} />
-      <ChartSection label="ATM-1" defaultStrike={m1Strike} allStrikes={allStrikes} rawRows={rawRows} canvasRef={refM1}  selectedExpiry={selectedExpiry} />
+      <ChartSection label="ATM+1" defaultStrike={p1Strike} allStrikes={allStrikes} rawRows={rawRows} canvasRef={refP1}  />
+      <ChartSection label="ATM"   defaultStrike={atm}      allStrikes={allStrikes} rawRows={rawRows} canvasRef={refAtm} />
+      <ChartSection label="ATM-1" defaultStrike={m1Strike} allStrikes={allStrikes} rawRows={rawRows} canvasRef={refM1}  />
     </div>
   );
 }
