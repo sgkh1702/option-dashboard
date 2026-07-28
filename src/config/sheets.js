@@ -88,4 +88,5 @@ export const MARKET_VIEW_RANGES = {
     near52High:      "G88:J103",
     breadth:         "B140:C144",
   },
+   corporateActions: { tab: "CorporateActions", range: "A2:F200" },
 };
