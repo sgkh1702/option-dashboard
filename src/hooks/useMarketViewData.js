@@ -29,6 +29,22 @@ function computeMaxOiFromRows(rows, isNiftyFlag) {
   return { maxCeStrike: maxCe.strike, maxCeOi: maxCe.ce_oi, maxPeStrike: maxPe.strike, maxPeOi: maxPe.pe_oi };
 }
 
+// CorporateActions tab columns: Symbol | Company | Type | Ex-Date | Purpose/Detail | Announced Date
+// (as pushed by nse_corporate_actions.py). Not numeric, so we map it directly
+// rather than through parseRow (which strips to numbers).
+function mapCorporateActionsRows(rows) {
+  return (rows || [])
+    .filter(r => r[0])
+    .map(r => ({
+      Symbol: r[0],
+      Company: r[1],
+      Type: r[2],
+      "Ex-Date": r[3],
+      "Purpose/Detail": r[4],
+      "Announced Date": r[5],
+    }));
+}
+
 export function useMarketViewData() {
   const [buildup,    setBuildup]    = useState({ longBuildup: [], shortBuildup: [], shortCovering: [], longUnwinding: [] });
   const [fii,         setFii]        = useState({
@@ -48,6 +64,7 @@ export function useMarketViewData() {
   });
   const [sentiment,   setSentiment]  = useState({ niftyPcr: null, bnfPcr: null });
   const [maxOi,       setMaxOi]      = useState({ nifty: null, bankNifty: null });
+  const [corporateActions, setCorporateActions] = useState([]);
   const [loading,     setLoading]    = useState(false);
   const [errors,      setErrors]     = useState([]);
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -55,7 +72,7 @@ export function useMarketViewData() {
   const fetchAll = useCallback(async () => {
     setLoading(true);
     const errs = [];
-    const { buildup: b, fii: f, fiiStats: fs, fiiNiftyBankNet: nb, dashboard: d, scanner: s } = MARKET_VIEW_RANGES;
+    const { buildup: b, fii: f, fiiStats: fs, fiiNiftyBankNet: nb, dashboard: d, scanner: s, corporateActions: ca } = MARKET_VIEW_RANGES;
 
     // ── Everything on the daily-processed workbook, in ONE batched request ──
     const marketViewSpecs = [
@@ -87,6 +104,7 @@ export function useMarketViewData() {
       { sheetName: s.tab, range: s.near52Low },
       { sheetName: s.tab, range: s.near52High },
       { sheetName: s.tab, range: s.breadth },
+      { sheetName: ca.tab, range: ca.range, skipHeader: true },
     ];
 
     let mv = new Array(marketViewSpecs.length).fill([]);
@@ -127,6 +145,7 @@ export function useMarketViewData() {
       loosersLargecap: mv[i++], loosersMidcap: mv[i++], loosersSmallcap: mv[i++],
       near52Low: mv[i++], near52High: mv[i++], breadth: mv[i++],
     });
+    setCorporateActions(mapCorporateActionsRows(mv[i++]));
 
     // ── PCR cells + raw option-chain sheets (default sheetId) — ONE more batched request ──
     const rawSpecs = [
@@ -162,5 +181,5 @@ export function useMarketViewData() {
     setLoading(false);
   }, []);
 
-  return { buildup, fii, fiiStats, dashboard, scanner, sentiment, maxOi, loading, errors, lastUpdated, fetchAll };
+  return { buildup, fii, fiiStats, dashboard, scanner, sentiment, maxOi, corporateActions, loading, errors, lastUpdated, fetchAll };
 }

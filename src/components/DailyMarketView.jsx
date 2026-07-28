@@ -420,6 +420,82 @@ function MarketNewsPanel({ news, accent = 0 }) {
   );
 }
 
+// ── Corporate Actions ──────────────────────────────────────────────────────
+// rows arrive as objects (already mapped in useMarketViewData.js from the
+// CorporateActions sheet tab): { Symbol, Company, Type, "Ex-Date",
+// "Purpose/Detail", "Announced Date" }
+const CA_TYPE_STYLE = {
+  Dividend:       "bg-emerald-100 text-emerald-700",
+  Bonus:          "bg-violet-100 text-violet-700",
+  Split:          "bg-amber-100 text-amber-700",
+  Rights:         "bg-rose-100 text-rose-700",
+  Results:        "bg-blue-100 text-blue-700",
+  "Board Meeting": "bg-gray-200 text-gray-600",
+};
+const CA_FILTERS = ["All", "Dividend", "Bonus", "Split", "Rights", "Results"];
+
+function CorporateActionsPanel({ rows, accent = 2 }) {
+  const [filter, setFilter] = useState("All");
+  const data = (rows || []).filter(r => r.Symbol);
+  const filtered = filter === "All" ? data : data.filter(r => r.Type === filter);
+
+  return (
+    <Card className={ACCENT_TINT[accent % ACCENT_TINT.length]}>
+      <div className="flex items-center justify-between mb-2 print:mb-1 flex-wrap gap-2">
+        <CardTitle>Corporate Actions</CardTitle>
+        <div className="flex gap-1 no-print">
+          {CA_FILTERS.map(f => (
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
+                filter === f
+                  ? "bg-blue-600 text-white border-blue-600"
+                  : "bg-white text-gray-500 border-gray-200 hover:bg-gray-50"
+              }`}
+            >
+              {f}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <NoData />
+      ) : (
+        <div className="overflow-x-auto max-h-72 print:max-h-none overflow-y-auto">
+          <table className="text-xs print:text-[7px] w-full">
+            <thead>
+              <tr className="border-b border-gray-200 sticky top-0 bg-white print:static">
+                <th className="text-left py-1 print:py-0 px-1 print:px-0.5 font-semibold text-gray-700 whitespace-nowrap">Symbol</th>
+                <th className="text-left py-1 print:py-0 px-1 print:px-0.5 font-semibold text-gray-700 whitespace-nowrap">Company</th>
+                <th className="text-left py-1 print:py-0 px-1 print:px-0.5 font-semibold text-gray-700 whitespace-nowrap">Type</th>
+                <th className="text-left py-1 print:py-0 px-1 print:px-0.5 font-semibold text-gray-700 whitespace-nowrap">Ex-Date</th>
+                <th className="text-left py-1 print:py-0 px-1 print:px-0.5 font-semibold text-gray-700">Detail</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((r, i) => (
+                <tr key={`${r.Symbol}-${r["Ex-Date"]}-${i}`} className="border-b border-gray-100 last:border-0">
+                  <td className="py-1 print:py-0 px-1 print:px-0.5 font-medium text-gray-700 whitespace-nowrap">{r.Symbol}</td>
+                  <td className="py-1 print:py-0 px-1 print:px-0.5 text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis max-w-[160px]">{r.Company}</td>
+                  <td className="py-1 print:py-0 px-1 print:px-0.5">
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] print:text-[6px] font-medium ${CA_TYPE_STYLE[r.Type] || "bg-gray-100 text-gray-600"}`}>
+                      {r.Type}
+                    </span>
+                  </td>
+                  <td className="py-1 print:py-0 px-1 print:px-0.5 text-gray-600 whitespace-nowrap">{r["Ex-Date"]}</td>
+                  <td className="py-1 print:py-0 px-1 print:px-0.5 text-gray-500 overflow-hidden text-ellipsis">{r["Purpose/Detail"]}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 const MOVER_COLS  = [0, 1, 3];
 const WEEK52_COLS = [0, 1, 3];
 // Participant table columns as fetched: ClientType(0), Long(1), Short(2), Net(3) -> drop Net for the compact table
@@ -427,7 +503,7 @@ const PARTICIPANT_TABLE_COLS = [0, 1, 2];
 
 export default function DailyMarketView() {
   const {
-    buildup, fii, fiiStats, dashboard, scanner, sentiment, maxOi,
+    buildup, fii, fiiStats, dashboard, scanner, sentiment, maxOi, corporateActions,
     loading, errors, lastUpdated, fetchAll,
   } = useMarketViewData();
 
@@ -547,6 +623,10 @@ export default function DailyMarketView() {
           <SimpleTable title="Short Covering" rows={buildup.shortCovering} colWidths={[65, 35]} tint={ACCENT_TINT[0]} colorSign />
           <SimpleTable title="Long Unwinding" rows={buildup.longUnwinding} colWidths={[65, 35]} tint={ACCENT_TINT[1]} colorSign />
         </div>
+      </Section>
+
+      <Section title="Corporate Actions" accent={3}>
+        <CorporateActionsPanel rows={corporateActions} accent={3} />
       </Section>
 
       <Section title="FII / DII Snapshot" accent={1} className="print-page-break">
