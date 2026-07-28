@@ -104,7 +104,7 @@ export function useMarketViewData() {
       { sheetName: s.tab, range: s.near52Low },
       { sheetName: s.tab, range: s.near52High },
       { sheetName: s.tab, range: s.breadth },
-      { sheetName: ca.tab, range: ca.range, skipHeader: true },
+      { sheetName: ca.tab, range: ca.range },  // range already starts at row 2 (A2:F200) — no header to skip
     ];
 
     let mv = new Array(marketViewSpecs.length).fill([]);
