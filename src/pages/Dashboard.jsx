@@ -13,10 +13,11 @@ import StrategyBuilder   from "../components/StrategyBuilder";
 import IntradayScreener  from "../components/IntradayScreener";
 import StockRanker from "../components/StockRanker";
 import DailyMarketView from "../components/DailyMarketView";
+import PatternScanner from "../components/PatternScanner";
 
 const PROXY = import.meta.env.VITE_PROXY_URL ?? "http://localhost:5000";
 
-const TABS = ["Daily Market View", "Option Chain", "Straddle / Strangle", "OI Chart", "Greeks", "Strategy", "Intraday Screener", "Swing Screener", "Stock Ranker"];
+const TABS = ["Daily Market View", "Option Chain", "Straddle / Strangle", "OI Chart", "Greeks", "Strategy", "Intraday Screener", "Swing Screener", "Stock Ranker", "Pattern Scanner"];
 
 // ALL NSE F&O expiries (index + stock) are now last Tuesday of month (since Sep 2025)
 // Nifty additionally has weekly Tuesday expiries
@@ -263,6 +264,7 @@ export default function Dashboard() {
           {activeTab === "Intraday Screener" && <IntradayScreener />}
           {activeTab === "Swing Screener"    && <SwingScreener />}
           {activeTab === "Stock Ranker" && <StockRanker />}
+          {activeTab === "Pattern Scanner" && <PatternScanner />}
         </div>
       </div>
     </div>
