@@ -17,11 +17,17 @@ function fmt(n, dec = 2) {
 // recommendation. Symmetrical Triangle is a continuation pattern (bias
 // depends on prior trend), so it's shown neutral rather than guessing.
 const PATTERN_META = {
-  "Ascending Triangle":   { family: "triangle", bias: "bullish", cls: "bg-emerald-100 text-emerald-700" },
-  "Descending Triangle":  { family: "triangle", bias: "bearish", cls: "bg-red-100 text-red-600" },
-  "Symmetrical Triangle": { family: "triangle", bias: "neutral", cls: "bg-gray-100 text-gray-600" },
-  "Rising Wedge":         { family: "wedge",    bias: "bearish", cls: "bg-red-100 text-red-600" },
-  "Falling Wedge":        { family: "wedge",    bias: "bullish", cls: "bg-emerald-100 text-emerald-700" },
+  "Ascending Triangle":   { family: "triangle",    bias: "bullish", cls: "bg-emerald-100 text-emerald-700" },
+  "Descending Triangle":  { family: "triangle",    bias: "bearish", cls: "bg-red-100 text-red-600" },
+  "Symmetrical Triangle": { family: "triangle",    bias: "neutral", cls: "bg-gray-100 text-gray-600" },
+  "Rising Wedge":         { family: "wedge",       bias: "bearish", cls: "bg-red-100 text-red-600" },
+  "Falling Wedge":        { family: "wedge",       bias: "bullish", cls: "bg-emerald-100 text-emerald-700" },
+  // Added post-Phase-4. Both patterns can resolve in either direction in
+  // classic TA — a Rectangle breaks whichever way it breaks, and a
+  // Broadening Wedge is notoriously unreliable directionally — so both
+  // stay "neutral" rather than guessing a bias like the triangles above do.
+  "Rectangle":            { family: "range",       bias: "neutral", cls: "bg-blue-100 text-blue-700" },
+  "Broadening Wedge":     { family: "broadening",  bias: "neutral", cls: "bg-purple-100 text-purple-700" },
 };
 
 const UNIVERSE_OPTS_DAILY = [
@@ -304,8 +310,10 @@ export default function PatternScanner() {
     return sortAsc ? av - bv : bv - av;
   });
 
-  const triangleCount = data.filter(r => PATTERN_META[r.pattern]?.family === "triangle").length;
-  const wedgeCount    = data.filter(r => PATTERN_META[r.pattern]?.family === "wedge").length;
+  const triangleCount   = data.filter(r => PATTERN_META[r.pattern]?.family === "triangle").length;
+  const wedgeCount      = data.filter(r => PATTERN_META[r.pattern]?.family === "wedge").length;
+  const rangeCount      = data.filter(r => PATTERN_META[r.pattern]?.family === "range").length;
+  const broadeningCount = data.filter(r => PATTERN_META[r.pattern]?.family === "broadening").length;
 
   const sortProps = { sortCol, sortAsc, onSort: handleSort };
 
@@ -329,7 +337,7 @@ export default function PatternScanner() {
               ? source === "daily"
                 ? "Fetching from yfinance — full-universe scans can take 60-90s..."
                 : "Fetching 5-min candles from Breeze, per-symbol — may take a while for larger universes"
-              : "Ascending/Descending/Symmetrical Triangle · Rising/Falling Wedge — trendline convergence + containment scored 0-100"}
+              : "Ascending/Descending/Symmetrical Triangle · Rising/Falling Wedge · Rectangle · Broadening Wedge — trendline shape + containment scored 0-100"}
           </p>
         </div>
         <button onClick={() => runScan(source, activeUniverse, minQuality)} disabled={status === "loading"}
@@ -384,9 +392,11 @@ export default function PatternScanner() {
       {status === "ok" && (
         <div className="flex border-b border-gray-100 flex-wrap">
           {[
-            { key: "all",      label: "All",       count: data.length },
-            { key: "triangle", label: "Triangles",  count: triangleCount },
-            { key: "wedge",    label: "Wedges",     count: wedgeCount },
+            { key: "all",        label: "All",         count: data.length },
+            { key: "triangle",   label: "Triangles",   count: triangleCount },
+            { key: "wedge",      label: "Wedges",      count: wedgeCount },
+            { key: "range",      label: "Rectangles",  count: rangeCount },
+            { key: "broadening", label: "Broadening",  count: broadeningCount },
           ].map(f => (
             <button key={f.key} onClick={() => setFamilyFilter(f.key)}
               className={`px-4 py-1.5 text-xs font-medium border-b-2 transition-colors ${
