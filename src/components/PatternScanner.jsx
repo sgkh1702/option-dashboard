@@ -1,4 +1,5 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect, Fragment } from "react";
+import { createChart } from "lightweight-charts";
 
 const PROXY = import.meta.env.VITE_PROXY_URL ?? "http://localhost:5000";
 
@@ -90,6 +91,133 @@ function BreakoutTag({ breakout }) {
   return <span className="text-gray-400 text-xs">Forming</span>;
 }
 
+// ── Chart panel (Phase 4) ────────────────────────────────────────────────────────
+// Fetches raw OHLC from the new /candles route and draws it with Lightweight
+// Charts, overlaying the two trendlines using the slope/intercept the scan
+// already returned — no recomputation, just mapped onto row.dates positions
+// (they're in window-local bar-index units, 0..len(row.dates)-1, per Phase 2).
+function PatternChart({ row, source }) {
+  const containerRef = useRef(null);
+  const chartRef = useRef(null);
+  const [status, setStatus] = useState("loading");
+  const [errorMsg, setErrorMsg] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    setStatus("loading");
+    setErrorMsg("");
+
+    const isIntraday = source === "intraday";
+    const toChartTime = (s) => {
+      if (isIntraday) {
+        // "YYYY-MM-DD HH:MM" IST -> UTC unix seconds, which is what
+        // Lightweight Charts wants for a UTCTimestamp on an intraday scale.
+        return Math.floor(new Date(s.replace(" ", "T") + ":00+05:30").getTime() / 1000);
+      }
+      return s; // "YYYY-MM-DD" business-day string works directly for daily
+    };
+
+    async function load() {
+      try {
+        const params = new URLSearchParams({
+          symbol: row.symbol,
+          source,
+          start_date: row.start_date,
+          end_date: row.end_date,
+        });
+        const res  = await fetch(`${PROXY}/candles?${params}`);
+        const json = await res.json();
+        if (cancelled) return;
+        if (json.error) throw new Error(json.error);
+        if (!json.candles || json.candles.length === 0) throw new Error("No candle data returned");
+        renderChart(json.candles);
+        if (!cancelled) setStatus("ok");
+      } catch (e) {
+        if (!cancelled) {
+          setErrorMsg(e.message);
+          setStatus("error");
+        }
+      }
+    }
+
+    function renderChart(candles) {
+      if (!containerRef.current) return;
+      if (chartRef.current) {
+        chartRef.current.remove();
+        chartRef.current = null;
+      }
+
+      const chart = createChart(containerRef.current, {
+        width: containerRef.current.clientWidth,
+        height: 320,
+        layout: { background: { color: "#ffffff" }, textColor: "#374151", fontSize: 11 },
+        grid: { vertLines: { color: "#f3f4f6" }, horzLines: { color: "#f3f4f6" } },
+        timeScale: { borderColor: "#e5e7eb" },
+        rightPriceScale: { borderColor: "#e5e7eb" },
+      });
+      chartRef.current = chart;
+
+      const candleSeries = chart.addCandlestickSeries({
+        upColor: "#10b981", downColor: "#ef4444", borderVisible: false,
+        wickUpColor: "#10b981", wickDownColor: "#ef4444",
+      });
+      candleSeries.setData(
+        candles.map(c => ({
+          time: toChartTime(c.time),
+          open: c.open, high: c.high, low: c.low, close: c.close,
+        }))
+      );
+
+      const lineFor = (line) => row.dates.map((d, i) => ({
+        time: toChartTime(d),
+        value: line.slope * i + line.intercept,
+      }));
+
+      const upperSeries = chart.addLineSeries({
+        color: "#f59e0b", lineWidth: 2, lastValueVisible: false, priceLineVisible: false,
+      });
+      upperSeries.setData(lineFor(row.upper));
+
+      const lowerSeries = chart.addLineSeries({
+        color: "#3b82f6", lineWidth: 2, lastValueVisible: false, priceLineVisible: false,
+      });
+      lowerSeries.setData(lineFor(row.lower));
+
+      chart.timeScale().fitContent();
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+      if (chartRef.current) {
+        chartRef.current.remove();
+        chartRef.current = null;
+      }
+    };
+    // row identity (symbol+window+start_date) is the effective dependency —
+    // re-render whenever a different row's chart is expanded.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [row.symbol, row.window, row.start_date, source]);
+
+  return (
+    <div className="p-3 bg-gray-50">
+      {status === "loading" && (
+        <div className="h-[320px] flex items-center justify-center text-xs text-gray-400">Loading chart…</div>
+      )}
+      {status === "error" && (
+        <div className="h-[80px] flex items-center justify-center text-xs text-red-500">⚠ {errorMsg}</div>
+      )}
+      <div ref={containerRef} style={{ display: status === "ok" ? "block" : "none" }} />
+      {status === "ok" && (
+        <div className="flex gap-4 mt-2 text-[10px] text-gray-400">
+          <span className="flex items-center gap-1"><span className="w-2.5 h-0.5 bg-amber-500 inline-block" /> Upper trendline</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-0.5 bg-blue-500 inline-block" /> Lower trendline</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function PatternScanner() {
   const [source,      setSource]      = useState("daily");
@@ -102,10 +230,13 @@ export default function PatternScanner() {
   const [data,      setData]      = useState([]);
   const [meta,      setMeta]      = useState(null);   // scanned/skipped_no_code/time from the API
   const [lastFetch, setLastFetch] = useState(null);
+  const [scanSource, setScanSource] = useState("daily"); // source used for the data currently on screen
 
   const [familyFilter, setFamilyFilter] = useState("all"); // all | triangle | wedge
   const [sortCol, setSortCol] = useState("quality");
   const [sortAsc, setSortAsc] = useState(false);
+
+  const [expandedKey, setExpandedKey] = useState(null); // `${symbol}-${window}-${start_date}` or null
 
   const fetchingRef = useRef(false);
 
@@ -116,6 +247,7 @@ export default function PatternScanner() {
     fetchingRef.current = true;
     setStatus("loading");
     setErrorMsg("");
+    setExpandedKey(null); // collapse any open chart — stale row keys otherwise
     try {
       const endpoint = src === "daily" ? "pattern-scan-daily" : "pattern-scan-intraday";
       const res  = await fetch(`${PROXY}/${endpoint}?universe=${uni}&min_quality=${minQ}`);
@@ -124,6 +256,7 @@ export default function PatternScanner() {
       setData(json.data ?? []);
       setMeta({ scanned: json.scanned, skippedNoCode: json.skipped_no_code, total: json.count });
       setLastFetch(new Date());
+      setScanSource(src);
       setStatus("ok");
     } catch (e) {
       setErrorMsg(e.message);
@@ -157,6 +290,12 @@ export default function PatternScanner() {
   const wedgeCount    = data.filter(r => PATTERN_META[r.pattern]?.family === "wedge").length;
 
   const sortProps = { sortCol, sortAsc, onSort: handleSort };
+
+  const rowKey = (r) => `${r.symbol}-${r.window}-${r.start_date}`;
+  const toggleRow = (r) => {
+    const k = rowKey(r);
+    setExpandedKey(cur => (cur === k ? null : k));
+  };
 
   return (
     <div className="space-y-3">
@@ -278,27 +417,46 @@ export default function PatternScanner() {
                   <th className="py-2 px-2 text-[10px] text-gray-500 uppercase tracking-wide">Date Range</th>
                   <SortTh col="quality" {...sortProps} className="text-right">Quality</SortTh>
                   <th className="py-2 px-2 text-[10px] text-gray-500 uppercase tracking-wide text-center">Breakout</th>
+                  <th className="py-2 px-2 text-[10px] text-gray-500 uppercase tracking-wide text-center">Chart</th>
                 </tr>
               </thead>
               <tbody>
-                {sorted.map((r, i) => (
-                  <tr key={`${r.symbol}-${r.window}-${r.start_date}`}
-                    className="border-b border-gray-50 hover:bg-gray-50/60 transition-colors text-xs">
-                    <td className="py-2.5 px-2 text-gray-400">{i + 1}</td>
-                    <td className="py-2.5 px-2">
-                      <a href={`https://www.tradingview.com/chart/?symbol=NSE%3A${r.symbol}`}
-                        target="_blank" rel="noopener noreferrer"
-                        className="font-semibold text-sm text-blue-600 hover:underline">
-                        {r.symbol}
-                      </a>
-                    </td>
-                    <td className="py-2.5 px-2"><PatternBadge pattern={r.pattern} /></td>
-                    <td className="py-2.5 px-2 text-right text-gray-500">{r.window} bars</td>
-                    <td className="py-2.5 px-2 text-gray-500 text-[11px]">{r.start_date} → {r.end_date}</td>
-                    <td className="py-2.5 px-2 text-right"><QualityChip value={r.quality} /></td>
-                    <td className="py-2.5 px-2 text-center"><BreakoutTag breakout={r.breakout} /></td>
-                  </tr>
-                ))}
+                {sorted.map((r, i) => {
+                  const key = rowKey(r);
+                  const isOpen = expandedKey === key;
+                  return (
+                    <Fragment key={key}>
+                      <tr
+                        onClick={() => toggleRow(r)}
+                        className={`border-b border-gray-50 hover:bg-gray-50/60 transition-colors text-xs cursor-pointer ${isOpen ? "bg-blue-50/40" : ""}`}>
+                        <td className="py-2.5 px-2 text-gray-400">{i + 1}</td>
+                        <td className="py-2.5 px-2">
+                          <a href={`https://www.tradingview.com/chart/?symbol=NSE%3A${r.symbol}`}
+                            target="_blank" rel="noopener noreferrer"
+                            onClick={e => e.stopPropagation()}
+                            className="font-semibold text-sm text-blue-600 hover:underline">
+                            {r.symbol}
+                          </a>
+                        </td>
+                        <td className="py-2.5 px-2"><PatternBadge pattern={r.pattern} /></td>
+                        <td className="py-2.5 px-2 text-right text-gray-500">{r.window} bars</td>
+                        <td className="py-2.5 px-2 text-gray-500 text-[11px]">{r.start_date} → {r.end_date}</td>
+                        <td className="py-2.5 px-2 text-right"><QualityChip value={r.quality} /></td>
+                        <td className="py-2.5 px-2 text-center"><BreakoutTag breakout={r.breakout} /></td>
+                        <td className="py-2.5 px-2 text-center text-gray-400">
+                          <span className={`inline-block transition-transform ${isOpen ? "rotate-180" : ""}`}>▾</span>
+                        </td>
+                      </tr>
+                      {isOpen && (
+                        <tr key={`${key}-chart`}>
+                          <td colSpan={8} className="p-0 border-b border-gray-100">
+                            <PatternChart row={r} source={scanSource} />
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -330,6 +488,7 @@ export default function PatternScanner() {
           <span><b className="text-gray-600">Quality:</b> green ≥80 strong fit · amber 60-79 marginal · gray &lt;60 weak</span>
           <span><b className="text-gray-600">Bias:</b> classic TA reading, not a recommendation — always confirm on a chart</span>
           <span><b className="text-gray-600">Breakout:</b> only flagged once price actually closes beyond a trendline</span>
+          <span><b className="text-gray-600">Chart:</b> click a row to overlay the detected trendlines on the price chart</span>
           {meta?.skippedNoCode > 0 && (
             <span><b className="text-gray-600">{meta.skippedNoCode} stock(s)</b> skipped — no Breeze code mapped</span>
           )}
