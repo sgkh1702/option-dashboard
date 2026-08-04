@@ -199,15 +199,33 @@ function PatternChart({ row, source }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [row.symbol, row.window, row.start_date, source]);
 
+  // Keeps the chart's pixel width in sync with its container — both on the
+  // initial mount (see the createChart-width bug this whole effect is here
+  // to prevent) and on any later resize (window resize, sidebar toggle, etc).
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const ro = new ResizeObserver(entries => {
+      const w = entries[0]?.contentRect?.width;
+      if (w && chartRef.current) chartRef.current.applyOptions({ width: w });
+    });
+    ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, []);
+
   return (
     <div className="p-3 bg-gray-50">
-      {status === "loading" && (
-        <div className="h-[320px] flex items-center justify-center text-xs text-gray-400">Loading chart…</div>
-      )}
-      {status === "error" && (
-        <div className="h-[80px] flex items-center justify-center text-xs text-red-500">⚠ {errorMsg}</div>
-      )}
-      <div ref={containerRef} style={{ display: status === "ok" ? "block" : "none" }} />
+      <div className="relative" style={{ height: 320 }}>
+        {status === "loading" && (
+          <div className="absolute inset-0 flex items-center justify-center text-xs text-gray-400 bg-gray-50">Loading chart…</div>
+        )}
+        {status === "error" && (
+          <div className="absolute inset-0 flex items-center justify-center text-xs text-red-500 bg-gray-50">⚠ {errorMsg}</div>
+        )}
+        {/* Always mounted, never display:none — hiding it would zero out
+            clientWidth right when createChart reads it, producing a
+            0-width chart that looks blank even though data loaded fine. */}
+        <div ref={containerRef} className="absolute inset-0" style={{ visibility: status === "ok" ? "visible" : "hidden" }} />
+      </div>
       {status === "ok" && (
         <div className="flex gap-4 mt-2 text-[10px] text-gray-400">
           <span className="flex items-center gap-1"><span className="w-2.5 h-0.5 bg-amber-500 inline-block" /> Upper trendline</span>
